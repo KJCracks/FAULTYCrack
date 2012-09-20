@@ -1,29 +1,29 @@
 /*
-
-Dumps decrypted iPhone Applications to a file - better solution than those GDB scripts for non working GDB versions
-(C) Copyright 2011 Stefan Esser
-
-iPod:~ root# DYLD_INSERT_LIBRARIES=dumpdecrypted.dylib /var/mobile/Applications/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/Scan.app/Scan
-mach-o decryption dumper
-
-DISCLAIMER: This tool is only meant for security research purposes, not for application crackers.
-
-[+] Found encrypted data at address 00002000 of length 1826816 bytes - type 1.
-[+] Opening /private/var/mobile/Applications/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/Scan.app/Scan for reading.
-[+] Reading header
-[+] Detecting header type
-[+] Executable is a FAT image - searching for right architecture
-[+] Correct arch is at offset 2408224 in the file
-[+] Opening Scan.decrypted for writing.
-[-] Failed opening. Most probably a sandbox issue. Trying something different.
-[+] Opening /private/var/mobile/Applications/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/tmp/Scan.decrypted for writing.
-[+] Copying the not encrypted start of the file
-[+] Dumping the decrypted data into the file
-[+] Copying the not encrypted remainder of the file
-[+] Closing original file
-[+] Closing dump file
-
-*/
+ 
+ Dumps decrypted iPhone Applications to a file - better solution than those GDB scripts for non working GDB versions
+ (C) Copyright 2011 Stefan Esser
+ 
+ iPod:~ root# DYLD_INSERT_LIBRARIES=dumpdecrypted.dylib /var/mobile/Applications/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/Scan.app/Scan
+ mach-o decryption dumper
+ 
+ DISCLAIMER: This tool is only meant for security research purposes, not for application crackers.
+ 
+ [+] Found encrypted data at address 00002000 of length 1826816 bytes - type 1.
+ [+] Opening /private/var/mobile/Applications/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/Scan.app/Scan for reading.
+ [+] Reading header
+ [+] Detecting header type
+ [+] Executable is a FAT image - searching for right architecture
+ [+] Correct arch is at offset 2408224 in the file
+ [+] Opening Scan.decrypted for writing.
+ [-] Failed opening. Most probably a sandbox issue. Trying something different.
+ [+] Opening /private/var/mobile/Applications/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/tmp/Scan.decrypted for writing.
+ [+] Copying the not encrypted start of the file
+ [+] Dumping the decrypted data into the file
+ [+] Copying the not encrypted remainder of the file
+ [+] Closing original file
+ [+] Closing dump file
+ 
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -33,11 +33,11 @@ DISCLAIMER: This tool is only meant for security research purposes, not for appl
 #include <mach-o/loader.h>
 
 struct ProgramVars {
-  struct mach_header*	mh;
-  int*		NXArgcPtr;
-  const char***	NXArgvPtr;
-  const char***	environPtr;
-  const char**	__prognamePtr;
+    struct mach_header*	mh;
+    int*		NXArgcPtr;
+    const char***	NXArgvPtr;
+    const char***	environPtr;
+    const char**	__prognamePtr;
 };
 
 #define swap32(value) (((value & 0xFF000000) >> 24) | ((value & 0x00FF0000) >> 8) | ((value & 0x0000FF00) << 8) | ((value & 0x000000FF) << 24) )
@@ -52,18 +52,18 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
 	struct mach_header *mh;
 	char buffer[1024];
 	char rpath[4096],npath[4096]; /* should be big enough for PATH_MAX */
-	unsigned int fileoffs = 0, off_cryptid = 0, restsize;
+	unsigned int fileoffs = 0, restsize;
 	int i,fd,outfd,r,n,toread;
 	char *tmp;
 	
 	printf("mach-o decryption dumper\n\n");
-		
+    
 	printf("DISCLAIMER: This tool is only meant for security research purposes, not for application crackers.\n\n");
 	/* searching all load commands for an LC_ENCRYPTION_INFO load command */
 	lc = (struct load_command *)((unsigned char *)pvars->mh + sizeof(struct mach_header));
-		
+    
 	for (i=0; i<pvars->mh->ncmds; i++) {
-		/*printf("Load Command (%d): %08x\n", i, lc->cmd);*/
+		printf("Load Command (%d): %08x\n", i, lc->cmd);
 		
 		if (lc->cmd == LC_ENCRYPTION_INFO) {
 			eic = (struct encryption_info_command *)lc;
@@ -72,9 +72,7 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
 			if (eic->cryptid == 0) {
 				break;
 			}
-			off_cryptid=(off_t)((void*)&eic->cryptid - (void*)pvars->mh);
-			printf("[+] offset to cryptid found: @%p(from %p) = %x\n", &eic->cryptid, pvars->mh, off_cryptid);
-
+			
 			printf("[+] Found encrypted data at address %08x of length %u bytes - type %u.\n", eic->cryptoff, eic->cryptsize, eic->cryptid);
 			
 			if (realpath(argv[0], rpath) == NULL) {
@@ -119,7 +117,7 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
 				printf("[-] Executable is of unknown type\n");
 				_exit(1);
 			}
-
+            
 			/* extract basename */
 			tmp = strrchr(rpath, '/');
 			if (tmp == NULL) {
@@ -129,7 +127,7 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
 			strlcpy(npath, tmp+1, sizeof(npath));
 			strlcat(npath, ".decrypted", sizeof(npath));
 			strlcpy(buffer, npath, sizeof(buffer));
-
+            
 			printf("[+] Opening %s for writing.\n", npath);
 			outfd = open(npath, O_RDWR|O_CREAT|O_TRUNC, 0644);
 			if (outfd == -1) {
@@ -159,7 +157,7 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
 			}
 			
 			/* calculate address of beginning of crypted data */
-			n = fileoffs + eic->cryptoff - 0x1000; /* we assume header is normally at 0x1000 */
+			n = fileoffs + eic->cryptoff;
 			
 			restsize = lseek(fd, 0, SEEK_END) - n - eic->cryptsize;			
 			lseek(fd, 0, SEEK_SET);
@@ -184,7 +182,7 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
 			
 			/* now write the previously encrypted data */
 			printf("[+] Dumping the decrypted data into the file\n");
-			r = write(outfd, (unsigned char *)pvars->mh + eic->cryptoff - 0x1000, eic->cryptsize);
+			r = write(outfd, (unsigned char *)pvars->mh + eic->cryptoff, eic->cryptsize);
 			if (r != eic->cryptsize) {
 				printf("[-] Error writing file\n");
 				_exit(1);
@@ -209,16 +207,7 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
 					_exit(1);
 				}
 			}
-
-			if (off_cryptid) {
-				uint32_t zero=0;
-				off_cryptid+=fileoffs;
-				printf("[+] Setting the LC_ENCRYPTION_INFO->cryptid to 0 at offset %x\n", off_cryptid);
-				if (lseek(outfd, off_cryptid, SEEK_SET) != off_cryptid || write(outfd, &zero, 4) != 4) {
-					printf("[-] Error writing cryptid value\n");
-				}
-			}
-
+			
 			printf("[+] Closing original file\n");
 			close(fd);
 			printf("[+] Closing dump file\n");
@@ -232,3 +221,4 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
 	printf("[-] This mach-o file is not encrypted. Nothing was decrypted.\n");
 	_exit(1);
 }
+/* TODO: set the LC_ENCRYPTION_INFO->cryptid to 0 */

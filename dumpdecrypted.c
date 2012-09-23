@@ -97,6 +97,12 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
 			
 			/* Is this a FAT file - we assume the right endianess */
 			if (fh->magic == FAT_CIGAM) {
+                //TODO
+                //swap the architecture of the original binary
+                //execute the original binary with armv6
+                //dump it
+                //return back
+                
 				printf("[+] Executable is a FAT image - searching for right architecture\n");
 				arch = (struct fat_arch *)&fh[1];
 				for (i=0; i<swap32(fh->nfat_arch); i++) {
@@ -180,6 +186,10 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
 				}
 			}
 			
+            
+            
+            
+            
 			/* now write the previously encrypted data */
 			printf("[+] Dumping the decrypted data into the file\n");
 			r = write(outfd, (unsigned char *)pvars->mh + eic->cryptoff, eic->cryptsize);

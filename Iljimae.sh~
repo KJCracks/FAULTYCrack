@@ -86,84 +86,79 @@ function crack {
       let removes+=1; continue
    fi
 
-   #patch iTunesMetadata
-   
-   if [ -e "$AppPath/AppName/iTunesMetadata.plist" ];then
-      WorkDir="$AppPath/AppName"
-      ThankYouRastignac=$(plutil -xml "$WorkDir/iTunesMetadata.plist" 2>&1> /dev/null)
-      echo -e "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" > "$tmp/iTunesMetadata.plist"
-      echo -e "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">" >> "$tmp/iTunesMetadata.plist"
-      echo -e "<plist version=\"1.0\">" >> "$tmp/iTunesMetadata.plist"
-      echo -e "<dict>" >> "$tmp/iTunesMetadata.plist"
-      echo -e "\t<key>appleId</key>" >> "$tmp/iTunesMetadata.plist"
-      echo -e "\t<string>cracker@apple.com</string>" >> "$tmp/iTunesMetadata.plist"
-      echo -e "\t<key>purchaseDate</key>" >> "$tmp/iTunesMetadata.plist"
-      echo -e "\t<date>2012-12-21T23:59:59Z</date>" >> "$tmp/iTunesMetadata.plist"
-      # MadHouse can last more than three seconds in bed!
-      grep -A1 "<key>artistId</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
-      grep -A1 "<key>artistName</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
-      grep -A1 "<key>buy-only</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
-      grep -A1 "<key>buyParams</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
-      grep -A1 "<key>copyright</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
-      grep -A1 "<key>drmVersionNumber</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
-      grep -A1 "<key>fileExtension</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
-      grep -A1 -m1 "<key>genre</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
-      grep -A1 -m1 "<key>genreId</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
-      grep -A1 "<key>itemId</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
-      grep -A1 "<key>itemName</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
-      grep -A1 "<key>kind</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
-      grep -A1 "<key>playlistArtistName</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
-      grep -A1 "<key>playlistName</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
-      grep -A1 "<key>price</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
-      grep -A1 "<key>priceDisplay</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
-      grep -A99 "<key>rating</key>" "$WorkDir/iTunesMetadata.plist" | grep -m1 -B99 "</dict>" >> "$tmp/iTunesMetadata.plist"
-      grep -A1 "<key>releaseDate</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
-      grep -A1 "<key>s</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
-      grep -A1 "<key>softwareIcon57x57URL</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
-      grep -A1 "<key>softwareIconNeedsShine</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
-      grep -A99 "<key>softwareSupportedDeviceIds</key>" "$WorkDir/iTunesMetadata.plist" | grep -m1 -B99 "</array>" >> "$tmp/iTunesMetadata.plist"
-      grep -A1 "<key>softwareVersionBundleId</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
-      grep -A1 "<key>softwareVersionExternalIdentifier</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
-      grep -A99 "<key>softwareVersionExternalIdentifiers</key>" "$WorkDir/iTunesMetadata.plist" | grep -m1 -B99 "</array>" >> "$tmp/iTunesMetadata.plist"
-      grep -A99 "<key>subgenres</key>" "$WorkDir/iTunesMetadata.plist" | grep -m1 -B99 "</array>" >> "$tmp/iTunesMetadata.plist"
-      grep -A1 "<key>vendorId</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
-      grep -A1 "<key>versionRestrictions</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
-      echo -e "</dict>" >> "$tmp/iTunesMetadata.plist"
-      echo -e "</plist>" >> "$tmp/iTunesMetadata.plist"
-      ThankYouRastignacAGAIN=$(plutil -binary "$tmp/iTunesMetadata.plist" 2>&1> /dev/null)
-      MADHOUSEMADHOUSE=$(plutil -binary "$tmp/iTunesMetadata.plist")
+#patch iTunesMetadata
 
-#pack non-essential stuff
-jongun=$(zip -u -y -r -n .jpg:.JPG:.jpeg:.png:.PNG:.gif:.GIF:.Z:.gz:.zip:.zoo:.arc:.lzh:.rar:.arj:.mp3:.mp4:.m4a:.m4v:.ogg:.ogv:.avi:.flac:.aac \"%@\" Payload/* -x Payload/iTunesArtwork Payload/iTunesMetadata.plist \"Payload/Documents/*\" \"Payload/Library/*\" \"Payload/tmp/*\" \"Payload/*/%@\" \"Payload/*/SC_Info/*\" 2>&1> /dev/null")
+if [ -e "$AppPath/AppName/iTunesMetadata.plist" ];then
+WorkDir="$AppPath/AppName"
+ThankYouRastignac=$(plutil -xml "$WorkDir/iTunesMetadata.plist" 2>&1> /dev/null)
+echo -e "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" > "$tmp/iTunesMetadata.plist"
+echo -e "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">" >> "$tmp/iTunesMetadata.plist"
+echo -e "<plist version=\"1.0\">" >> "$tmp/iTunesMetadata.plist"
+echo -e "<dict>" >> "$tmp/iTunesMetadata.plist"
+echo -e "\t<key>appleId</key>" >> "$tmp/iTunesMetadata.plist"
+echo -e "\t<string>cracker@apple.com</string>" >> "$tmp/iTunesMetadata.plist"
+echo -e "\t<key>purchaseDate</key>" >> "$tmp/iTunesMetadata.plist"
+echo -e "\t<date>2012-12-21T23:59:59Z</date>" >> "$tmp/iTunesMetadata.plist"
+# MadHouse can last more than three seconds in bed!
+grep -A1 "<key>artistId</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
+grep -A1 "<key>artistName</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
+grep -A1 "<key>buy-only</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
+grep -A1 "<key>buyParams</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
+grep -A1 "<key>copyright</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
+grep -A1 "<key>drmVersionNumber</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
+grep -A1 "<key>fileExtension</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
+grep -A1 -m1 "<key>genre</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
+grep -A1 -m1 "<key>genreId</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
+grep -A1 "<key>itemId</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
+grep -A1 "<key>itemName</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
+grep -A1 "<key>kind</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
+grep -A1 "<key>playlistArtistName</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
+grep -A1 "<key>playlistName</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
+grep -A1 "<key>price</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
+grep -A1 "<key>priceDisplay</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
+grep -A99 "<key>rating</key>" "$WorkDir/iTunesMetadata.plist" | grep -m1 -B99 "</dict>" >> "$tmp/iTunesMetadata.plist"
+grep -A1 "<key>releaseDate</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
+grep -A1 "<key>s</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
+grep -A1 "<key>softwareIcon57x57URL</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
+grep -A1 "<key>softwareIconNeedsShine</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
+grep -A99 "<key>softwareSupportedDeviceIds</key>" "$WorkDir/iTunesMetadata.plist" | grep -m1 -B99 "</array>" >> "$tmp/iTunesMetadata.plist"
+grep -A1 "<key>softwareVersionBundleId</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
+grep -A1 "<key>softwareVersionExternalIdentifier</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
+grep -A99 "<key>softwareVersionExternalIdentifiers</key>" "$WorkDir/iTunesMetadata.plist" | grep -m1 -B99 "</array>" >> "$tmp/iTunesMetadata.plist"
+grep -A99 "<key>subgenres</key>" "$WorkDir/iTunesMetadata.plist" | grep -m1 -B99 "</array>" >> "$tmp/iTunesMetadata.plist"
+grep -A1 "<key>vendorId</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
+grep -A1 "<key>versionRestrictions</key>" "$WorkDir/iTunesMetadata.plist" >> "$tmp/iTunesMetadata.plist"
+echo -e "</dict>" >> "$tmp/iTunesMetadata.plist"
+echo -e "</plist>" >> "$tmp/iTunesMetadata.plist"
+ThankYouRastignacAGAIN=$(plutil -binary "$tmp/iTunesMetadata.plist" 2>&1> /dev/null)
+MADHOUSEMADHOUSE=$(plutil -binary "$tmp/iTunesMetadata.plist")
+fi
 
 
-   fi
-   
-   
    tmpexec="$tmp/$AppExec.decrypted"
    swag=$(DYLD_INSERT_LIBRARIES=$DYLB_FILE; "$AppPath/$AppName/$AppExec" findoff > /tmp/.yolo)
    include /tmp/.yolo
    if [ "$thin_binary" = "1" ]; then
       swag=$(DYLD_INSERT_LIBRARIES=$DYLB_FILE; "$AppPath/$AppName/$AppExec" dump "$tmpexec" 0  > /tmp/.yolo) #yay for thin binaries
       if [ "$?" != "1" ]; then
-         echo "Error cracking binary"
+echo "Error cracking binary"
          let removes+= 1; continue
       fi
-      
-   else
-      echo "[+] Dumping armv7 portion of binary"
-      armv7=$(DYLD_INSERT_LIBRARIES=$DYLB_FILE; "$AppPath/$AppName/$AppExec" dump "$tmpexec" "$armv7_offset"  > /tmp/.yolo)
-      if [ "$?" != "1" ]; then
-         echo "[-] Cannot dump armv7 portion"
-         let removes+=1; continue
-      fi
-      echo "[+] Dumping armv6 portion of binary"
-      armv6=$(DYLD_INSERT_LIBRARIES=$DYLB_FILE; "$AppPath/$AppName/$AppExec" dump "$tmpexec" "$armv6_offset"  > /tmp/.yolo)
-      if [ "$?" != "1" ]; then
-         echo "[-] Cannot dump armv6 portion"
-         let removes+=1; continue
-      fi
+   
+else 
+echo "[+] Dumping armv7 portion of binary"
+armv7=$(DYLD_INSERT_LIBRARIES=$DYLB_FILE; "$AppPath/$AppName/$AppExec" dump "$tmpexec" "$armv7_offset"  > /tmp/.yolo)
+if [ "$?" != "1" ]; then
+echo "[-] Cannot dump armv7 portion"
+let removes+=1; continue
    fi
+echo "[+] Dumping armv6 portion of binary"
+armv6=$(DYLD_INSERT_LIBRARIES=$DYLB_FILE; "$AppPath/$AppName/$AppExec" dump "$tmpexec" "$armv6_offset"  > /tmp/.yolo)
+if [ "$?" != "1" ]; then
+echo "[-] Cannot dump armv6 portion"
+let removes+=1; continue
+fi
+fi
 }
 
 
@@ -228,7 +223,7 @@ for num in $numbah; do
       totalremoves=$((removes + totalremoves))
       removes=0
       crack $num "$CrackerName"
-      clean
+        clean
    fi
 done
 # WANG SMASH

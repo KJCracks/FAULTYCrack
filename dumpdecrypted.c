@@ -83,86 +83,85 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
     uint32_t offset;
     int i, fd, outfd, r, n, toread;
     char *tmp;
-    
-    if (strcmp(argv[1], "dump") != 0) {
-        strlcpy(dumpfile, argv[2], sizeof(dumpfile));
-        strlcpy(binary, argv[0], sizeof(binary));
-        printf("SWAG YOLO"); 
-        sscanf(argv[3], "%" SCNu32, &offset); //dumb
-        printf("SWAG YOLO 123");
-        dump_binary(binary, dumpfile, offset, pvars);
-        _exit(1);
-    }
-    
-    else if (strcmp(argv[1], "findoff") != 0) {
-        //check if fat
-        if (realpath(argv[0], rpath) == NULL) {
-            strlcpy(rpath, argv[0], sizeof(rpath));
-        } else {
-            _exit(4);
-        }
-        fprintf(stderr, "[+] Opening %s for reading.\n", rpath);
-        fd = open(rpath, O_RDONLY);
-        if (fd == -1) {
-            fprintf(stderr, "[-] Failed opening.\n");
-            _exit(4);
-        }
-        
-        fprintf(stderr, "[+] Reading headern");
-        n = read(fd, (void *) buffer, sizeof(buffer));	//yolo cuz fat_arch is useless
-        if (n != sizeof(buffer)) {
-            fprintf(stderr, "[W] Warning read only %d bytes\n", n);
-        }
-        
-        fprintf(stderr, "[+] Detecting header type\n");
-        fh = (struct fat_header *) buffer;
-        
-        /* Is this a FAT file - we assume the right endianess */
-        if (fh->magic == FAT_CIGAM) {
-            fprintf(stderr, "[+] Executable is a FAT image - searching for offset\n");
-            arch = (struct fat_arch *) &fh[1];
-            uint32_t armv6_offset = 0, armv7_offset = 0, cputype, cpusubtype;
-            //uint32_t iPhone5_offset;
-            for (i = 0; i < swap32(fh->nfat_arch); i++) {
-                cputype = swap32(arch->cputype);
-                cpusubtype = swap32(arch->cpusubtype);
-                if ((cputype == 12) && (cpusubtype == ARMV6)) {
-                    armv6_offset = swap32(arch->offset);
-                    fprintf(stderr, "[+] Found ARMV6 offset at %u\n", armv6_offset);
-                    break;
-                } else if ((cputype == 12) && (cpusubtype == ARMV7)) {
-                    armv7_offset = swap32(arch->offset);
-                    fprintf(stderr, "[+] Found ARMV7 offset at %u\n", armv7_offset);
-                    break;
-                }
-                /* iPhone 5
-                 else if ((cputype == 19) && (cpusubtype == ARMV7)) {
-                 }
-                 
-                 if ((pvars->mh->cputype == swap32(arch->cputype)) && (pvars->mh->cpusubtype == swap32(arch->cpusubtype))) {
-                 fileoffs = swap32(arch->offset);
-                 fprintf(stderr, "[+] Correct arch is at offset %u in the filen", fileoffs);
-                 fprintf(stderr, "cputype %u, cpusubtype %un", swap32(arch->cputype), swap32(arch->cputype));
-                 break;
-                 } */
-                
-                arch++;
-            }
-            if ((armv6_offset == 0) || (armv7_offset == 0)) {
-                fprintf(stderr, "[-] Could not find correct arch in FAT image\n");
-                _exit(11);
-            }
-            printf("armv7_offset=%u\n", armv7_offset);
-            printf("armv6_offset=%u\n", armv6_offset);
-            _exit(1); //yay!
-        } else if (fh->magic == MH_MAGIC) {
-            fprintf(stderr, "[+] Executable is a plain MACH-O image\n");
-            printf("thin_binary=1\n");
+    if (argc > 1) {
+        if (strcmp(argv[1], "dump") == 0) {
+            strlcpy(dumpfile, argv[2], sizeof(dumpfile));
+            strlcpy(binary, argv[0], sizeof(binary));
+            printf("SWAG YOLO"); 
+            sscanf(argv[3], "%" SCNu32, &offset); //dumb
+            printf("SWAG YOLO 123");
+            dump_binary(binary, dumpfile, offset, pvars);
             _exit(1);
-        } else {
-            fprintf(stderr, "[-] Executable is of unknown type\n");
-            _exit(12);
+        }
+        
+        else if (strcmp(argv[1], "findoff") == 0) {
+            //check if fat
+            if (realpath(argv[0], rpath) == NULL) {
+                strlcpy(rpath, argv[0], sizeof(rpath));
+            }
+            fprintf(stderr, "[+] Opening %s for reading.\n", rpath);
+            fd = open(rpath, O_RDONLY);
+            if (fd == -1) {
+                fprintf(stderr, "[-] Failed opening.\n");
+                _exit(4);
+            }
             
+            fprintf(stderr, "[+] Reading headern");
+            n = read(fd, (void *) buffer, sizeof(buffer));	//yolo cuz fat_arch is useless
+            if (n != sizeof(buffer)) {
+                fprintf(stderr, "[W] Warning read only %d bytes\n", n);
+            }
+            
+            fprintf(stderr, "[+] Detecting header type\n");
+            fh = (struct fat_header *) buffer;
+            
+            /* Is this a FAT file - we assume the right endianess */
+            if (fh->magic == FAT_CIGAM) {
+                fprintf(stderr, "[+] Executable is a FAT image - searching for offset\n");
+                arch = (struct fat_arch *) &fh[1];
+                uint32_t armv6_offset = 0, armv7_offset = 0, cputype, cpusubtype;
+                //uint32_t iPhone5_offset;
+                for (i = 0; i < swap32(fh->nfat_arch); i++) {
+                    cputype = swap32(arch->cputype);
+                    cpusubtype = swap32(arch->cpusubtype);
+                    if ((cputype == 12) && (cpusubtype == ARMV6)) {
+                        armv6_offset = swap32(arch->offset);
+                        fprintf(stderr, "[+] Found ARMV6 offset at %u\n", armv6_offset);
+                        break;
+                    } else if ((cputype == 12) && (cpusubtype == ARMV7)) {
+                        armv7_offset = swap32(arch->offset);
+                        fprintf(stderr, "[+] Found ARMV7 offset at %u\n", armv7_offset);
+                        break;
+                    }
+                    /* iPhone 5
+                     else if ((cputype == 19) && (cpusubtype == ARMV7)) {
+                     }
+                     
+                     if ((pvars->mh->cputype == swap32(arch->cputype)) && (pvars->mh->cpusubtype == swap32(arch->cpusubtype))) {
+                     fileoffs = swap32(arch->offset);
+                     fprintf(stderr, "[+] Correct arch is at offset %u in the filen", fileoffs);
+                     fprintf(stderr, "cputype %u, cpusubtype %un", swap32(arch->cputype), swap32(arch->cputype));
+                     break;
+                     } */
+                    
+                    arch++;
+                }
+                if ((armv6_offset == 0) || (armv7_offset == 0)) {
+                    fprintf(stderr, "[-] Could not find correct arch in FAT image\n");
+                    _exit(11);
+                }
+                printf("armv7_offset=%u\n", armv7_offset);
+                printf("armv6_offset=%u\n", armv6_offset);
+                _exit(1); //yay!
+            } else if (fh->magic == MH_MAGIC) {
+                fprintf(stderr, "[+] Executable is a plain MACH-O image\n");
+                printf("thin_binary=1\n");
+                _exit(1);
+            } else {
+                fprintf(stderr, "[-] Executable is of unknown type\n");
+                _exit(12);
+                
+            }
         }
     }
     
@@ -371,13 +370,14 @@ void dump_binary(char *rpath, char *dumpfile, uint32_t offset, struct ProgramVar
             foundCrypt = TRUE;
         }
         else if (lc->cmd == LC_SEGMENT) {
-            sc = (struct segment_commmand_do *) lc;
+            /*sc = (struct segment_commmand_do *) lc;
             uint32_t fourzeroninesix = 4096;
             if (sc->vmaddr != &fourzeroninesix) { //help!!!11
                 fprintf(stderr, "[+] Capitalist developers tried to change the vmaddr!"); //thanks Rastingac
                 text_start = sc->vmaddr;
                 foundSegment = TRUE;
-            }
+            }*/
+            foundSegment = TRUE;
         }
         if (foundCrypt && foundSegment) {
             break;
@@ -419,7 +419,7 @@ void dump_binary(char *rpath, char *dumpfile, uint32_t offset, struct ProgramVar
         uint32_t zero=0;
         off_cryptid+=offset;
         fprintf(stderr, "[+] Setting the LC_ENCRYPTION_INFO->cryptid to 0 at offset %x\n", off_cryptid);
-        if (lseek(outfd, off_cryptid, SEEK_SET) != off_cryptid || write(outfd, &zero, 4) != 4) {
+        if (lseek(outfile, off_cryptid, SEEK_SET) != off_cryptid || write(outfile, &zero, 4) != 4) {
             fprintf(stderr, "[-] Error writing cryptid value\n");
             _exit(6);
         }
@@ -428,40 +428,40 @@ void dump_binary(char *rpath, char *dumpfile, uint32_t offset, struct ProgramVar
     }
 }
 
-void dump_header(char *rpath, char *dumpfile, uint32_t offset, uint32_t cryptoff, uint32_t cryptsize) {
-    int i, fd, r;
-    
-    fprintf(stderr, "[+] Opening %s for reading.\n", rpath);
-    fd = open(rpath, O_RDONLY);
-    if (fd == -1) {
-        fprintf(stderr, "[-] Failed opening.\n");
-        _exit(1);
-    }
-    
-    /* calculate address of beginning of crypted data */
-    n = offset + cryptoff;
-    
-    restsize = lseek(fd, 0, SEEK_END) - n - cryptsize;
-    lseek(fd, 0, SEEK_SET);
-    
-    fprintf(stderr, "[+] Copying the not encrypted start of the filen");
-    /* first copy all the data before the encrypted data */
-    while (n > 0) {
-        toread = (n > sizeof(buffer)) ? sizeof(buffer) : n;
-        r = read(fd, buffer, toread);
-        if (r != toread) {
-            fprintf(stderr, "[-] Error reading filen");
-            _exit(1);
-        }
-        n -= r;
-        
-        r = write(outfd, buffer, toread);
-        if (r != toread) {
-            fprintf(stderr, "[-] Error writing filen");
-            _exit(1);
-        }
-    }
-    
-
-    
-}
+//void dump_header(char *rpath, char *dumpfile, uint32_t offset, uint32_t cryptoff, uint32_t cryptsize) {
+//    int i, fd, r;
+//    
+//    fprintf(stderr, "[+] Opening %s for reading.\n", rpath);
+//    fd = open(rpath, O_RDONLY);
+//    if (fd == -1) {
+//        fprintf(stderr, "[-] Failed opening.\n");
+//        _exit(1);
+//    }
+//    
+//    /* calculate address of beginning of crypted data */
+//    n = offset + cryptoff;
+//    
+//    restsize = lseek(fd, 0, SEEK_END) - n - cryptsize;
+//    lseek(fd, 0, SEEK_SET);
+//    
+//    fprintf(stderr, "[+] Copying the not encrypted start of the filen");
+//    /* first copy all the data before the encrypted data */
+//    while (n > 0) {
+//        toread = (n > sizeof(buffer)) ? sizeof(buffer) : n;
+//        r = read(fd, buffer, toread);
+//        if (r != toread) {
+//            fprintf(stderr, "[-] Error reading filen");
+//            _exit(1);
+//        }
+//        n -= r;
+//        
+//        r = write(outfd, buffer, toread);
+//        if (r != toread) {
+//            fprintf(stderr, "[-] Error writing filen");
+//            _exit(1);
+//        }
+//    }
+//    
+//
+//    
+//}

@@ -55,6 +55,8 @@ struct ProgramVars {
     const char **__prognamePtr;
 };
 
+typedef enum { false, true } bool;
+
 void dump_binary(char *rpath, char *dumpfile, uint32_t offset, struct ProgramVars *pvars);
 
 #define swap32(value) (((value & 0xFF000000) >> 24) | ((value & 0x00FF0000) >> 8) | ((value & 0x0000FF00) << 8) | ((value & 0x000000FF) << 24) )
@@ -344,10 +346,10 @@ void dump_binary(char *rpath, char *dumpfile, uint32_t offset, struct ProgramVar
 {
     struct encryption_info_command *eic;
     struct load_command *lc;
-    struct segment_commmand *sc;
+    struct segment_commmand_do *sc;
     uint32_t off_cryptid, text_start = 0, cryptoff, cryptsize;
     int i, fd;
-    BOOL foundCrypt = FALSE, foundSegment = FALSE; //probably unncessary 
+    bool foundCrypt = FALSE, foundSegment = FALSE; //probably unncessary 
     
     //find the cryptid/offset for the particular arch 
     lc = (struct load_command *) ((unsigned char *) pvars->mh + sizeof(struct mach_header));
@@ -367,10 +369,11 @@ void dump_binary(char *rpath, char *dumpfile, uint32_t offset, struct ProgramVar
             fprintf(stderr, "[+] Found encrypted data at address %08x of length %u bytes - type %u.\n", eic->cryptoff, eic->cryptsize, eic->cryptid);
             foundCrypt = TRUE;
         }
-        else if (lc->command == LC_SEGMENT) {
-            sc = (struct segment_commmand*) lc;
-            if (sc->vmaddr != 4096) {
-                fprintf(stder, "[+] Capitalist developers tried to change the vmaddr!"); //thanks Rastingac
+        else if (lc->cmd == LC_SEGMENT) {
+            sc = (struct segment_commmand_do *) lc;
+            uint32_t fourzeroninesix = 4096;
+            if (sc->vmaddr != &fourzeroninesix) { //help!!!11
+                fprintf(stderr, "[+] Capitalist developers tried to change the vmaddr!"); //thanks Rastingac
                 text_start = sc->vmaddr;
                 foundSegment = TRUE;
             }
@@ -412,6 +415,12 @@ void dump_binary(char *rpath, char *dumpfile, uint32_t offset, struct ProgramVar
     }
     //patch the cryptid
     if (off_cryptid) {
-        
+        uint32_t zero=0;
+        off_cryptid+=offset;
+        printf("[+] Setting the LC_ENCRYPTION_INFO->cryptid to 0 at offset %x\n", off_cryptid);
+        if (lseek(outfd, off_cryptid, SEEK_SET) != off_cryptid || write(outfd, &zero, 4) != 4) {
+            printf("[-] Error writing cryptid value\n");
+            _exit(6);
+        }
     }
 }

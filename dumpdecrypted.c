@@ -71,13 +71,39 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
 	int i,fd,outfd,r,n,toread;
 	char *tmp;
 	
-    strlcpy(dumpfile, argv[1], sizeof(dumpfile));
-    if (strcmp(argv[2], "dump") != 0) {
+    if (strcmp(argv[1], "dump") != 0) {
+        strlcpy(dumpfile, argv[2], sizeof(dumpfile));
+        printf("SWAG YOLO");
         sscanf(argv[3], "%"SCNu32, &cryptsize);
         sscanf(argv[4], "%"SCNu32, &cryptoff);
+        printf("SWAG YOLO 123");
         dump_binary(dumpfile, cryptsize, cryptoff, pvars);
+        _exit(1);
     }
-    
+    else if (strcmp(argv[1], "findoff") != 0) {
+        lc = (struct load_command *)((unsigned char *)pvars->mh + sizeof(struct mach_header));
+        
+        for (i=0; i<pvars->mh->ncmds; i++) {
+            fprintf(stderr, "Load Command (%d): %08x\n", i, lc->cmd);
+            
+            if (lc->cmd == LC_ENCRYPTION_INFO) {
+                eic = (struct encryption_info_command *)lc;
+                
+                /* If this load command is present, but data is not crypted then exit */
+                if (eic->cryptid == 0) {
+                    _exit(33);
+                }
+                off_cryptid=(off_t)((void*)&eic->cryptid - (void*)pvars->mh);
+                fprintf(stderr, "[+] Found encrypted data at address %08x of length %u bytes - type %u.\n", eic->cryptoff, eic->cryptsize, eic->cryptid);
+                printf("cryptoff
+                if (realpath(argv[0], rpath) == NULL) {
+                    strlcpy(rpath, argv[0], sizeof(rpath));
+                }
+            }
+        }
+                
+
+    }
 	fprintf(stderr, "mach-o decryption dumper\n\n");
 	/* searching all load commands for an LC_ENCRYPTION_INFO load command */
 	lc = (struct load_command *)((unsigned char *)pvars->mh + sizeof(struct mach_header));
@@ -107,7 +133,7 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
 			}
 			
 			fprintf(stderr, "[+] Reading header\n");
-			n = read(fd, (void *)buffer, sizeof(buffer));
+			n = read(fd, (void *)buffer, sizeof(buffer)); //yolo cuz fat_arch is useless
 			if (n != sizeof(buffer)) {
 				fprintf(stderr, "[W] Warning read only %d bytes\n", n);
 			}

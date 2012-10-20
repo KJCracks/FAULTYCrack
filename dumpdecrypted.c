@@ -8,6 +8,8 @@
  
  DISCLAIMER: This tool is only meant for security research purposes, not for application crackers.
  
+ ^ lol
+ 
  [+] Found encrypted data at address 00002000 of length 1826816 bytes - type 1.
  [+] Opening /private/var/mobile/Applications/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/Scan.app/Scan for reading.
  [+] Reading header
@@ -22,6 +24,15 @@
  [+] Copying the not encrypted remainder of the file
  [+] Closing original file
  [+] Closing dump file
+ 
+ */
+
+/*
+ Iljimae (c) Kim Jong-Cracks 1819-2012
+ Capitalist developers prosecuted since 1000BC
+ 
+ 
+ Thanks to poedCrackMod for inspiration, Clutch for swap code, pendo324, Nighthawk and Kim Jong-Un
  
  */
 #include <stdio.h>
@@ -74,8 +85,8 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
     if (strcmp(argv[1], "dump") != 0) {
         strlcpy(dumpfile, argv[2], sizeof(dumpfile));
         strlcpy(binary, argv[0], sizeof(binary));
-        printf("SWAG YOLO");
-        sscanf(argv[3], "%" SCNu32, &offset);
+        printf("SWAG YOLO"); 
+        sscanf(argv[3], "%" SCNu32, &offset); //dumb
         printf("SWAG YOLO 123");
         dump_binary(binary, dumpfile, offset, pvars);
         _exit(1);
@@ -151,7 +162,7 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
         }
     }
     
-    fprintf(stderr, "mach-o decryption dumpernn");
+    fprintf(stderr, "mach-o decryption dumpern\n");
     /* searching all load commands for an LC_ENCRYPTION_INFO load command */
     lc = (struct load_command *) ((unsigned char *) pvars->mh + sizeof(struct mach_header));
     
@@ -333,15 +344,16 @@ void dump_binary(char *rpath, char *dumpfile, uint32_t offset, struct ProgramVar
 {
     struct encryption_info_command *eic;
     struct load_command *lc;
-    uint32_t off_cryptid;
+    struct segment_commmand *sc;
+    uint32_t off_cryptid, text_start = 0, cryptoff, cryptsize;
     int i, fd;
+    BOOL foundCrypt = FALSE, foundSegment = FALSE; //probably unncessary 
     
     //find the cryptid/offset for the particular arch 
     lc = (struct load_command *) ((unsigned char *) pvars->mh + sizeof(struct mach_header));
     
     for (i = 0; i < pvars->mh->ncmds; i++) {
         fprintf(stderr, "Load Command (%d): %08xn", i, lc->cmd);
-        
         if (lc->cmd == LC_ENCRYPTION_INFO) {
             eic = (struct encryption_info_command *) lc;
             
@@ -351,12 +363,24 @@ void dump_binary(char *rpath, char *dumpfile, uint32_t offset, struct ProgramVar
                 _exit(5);
             }
             off_cryptid = (off_t) ((void *) &eic->cryptid - (void *) pvars->mh);
+            fprintf(stderr, "[+] offset to cryptid found: @%p(from %p) = %x\n", &eic->cryptid, pvars->mh, off_cryptid);
             fprintf(stderr, "[+] Found encrypted data at address %08x of length %u bytes - type %u.\n", eic->cryptoff, eic->cryptsize, eic->cryptid);
+            foundCrypt = TRUE;
+        }
+        else if (lc->command == LC_SEGMENT) {
+            sc = (struct segment_commmand*) lc;
+            if (sc->vmaddr != 4096) {
+                fprintf(stder, "[+] Capitalist developers tried to change the vmaddr!"); //thanks Rastingac
+                text_start = sc->vmaddr;
+                foundSegment = TRUE;
+            }
+        }
+        if (foundCrypt && foundSegment) {
             break;
         }
         lc = (struct load_command *) ((unsigned char *) lc + lc->cmdsize);
     }
-
+    
     fprintf(stderr, "[+] Opening %s for reading.\n", rpath);
     fd = open(rpath, O_RDONLY);
     if (fd == -1) {
@@ -370,11 +394,24 @@ void dump_binary(char *rpath, char *dumpfile, uint32_t offset, struct ProgramVar
     }
     lseek(outfile, offset, SEEK_SET);	//go to the offset
     
+    /* we only add back the mach header and extra stuff later */
+    
+    if (text_start != 0) {
+        cryptoff = eic->cryptoff + text_start;
+    }
+    else {
+        cryptoff = eic->cryptoff;
+    }
+    
     /* now write the previously encrypted data (header) */
     fprintf(stderr, "[+] Dumping the decrypted data into the file\n");
-    int r = write(outfile, (unsigned char *) pvars->mh + eic->cryptoff, eic->cryptsize);
+    int r = write(outfile, (unsigned char *) pvars->mh + cryptoff, eic->cryptsize);
     if (r != eic->cryptsize) {
         fprintf(stderr, "[-] Error writing file\n");
+        
+    }
+    //patch the cryptid
+    if (off_cryptid) {
         
     }
 }

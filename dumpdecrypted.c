@@ -119,7 +119,7 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
         
         /* Is this a FAT file - we assume the right endianess */
         if (fh->magic == FAT_CIGAM) {
-            fprintf(stderr, "[+] Executable is a FAT image - searching for offsetsn");
+            fprintf(stderr, "[+] Executable is a FAT image - searching for offset\n");
             arch = (struct fat_arch *) &fh[1];
             uint32_t armv6_offset = 0, armv7_offset = 0, cputype, cpusubtype;
             //uint32_t iPhone5_offset;
@@ -157,6 +157,8 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
             _exit(1); //yay!
         } else if (fh->magic == MH_MAGIC) {
             fprintf(stderr, "[+] Executable is a plain MACH-O image\n");
+            printf("thin_binary=1\n");
+            _exit(1);
         } else {
             fprintf(stderr, "[-] Executable is of unknown type\n");
             _exit(12);
@@ -340,7 +342,6 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
     _exit(1);
 }
 
-/* TODO: set the LC_ENCRYPTION_INFO->cryptid to 0 */
 
 void dump_binary(char *rpath, char *dumpfile, uint32_t offset, struct ProgramVars *pvars)
 {
@@ -417,10 +418,50 @@ void dump_binary(char *rpath, char *dumpfile, uint32_t offset, struct ProgramVar
     if (off_cryptid) {
         uint32_t zero=0;
         off_cryptid+=offset;
-        printf("[+] Setting the LC_ENCRYPTION_INFO->cryptid to 0 at offset %x\n", off_cryptid);
+        fprintf(stderr, "[+] Setting the LC_ENCRYPTION_INFO->cryptid to 0 at offset %x\n", off_cryptid);
         if (lseek(outfd, off_cryptid, SEEK_SET) != off_cryptid || write(outfd, &zero, 4) != 4) {
-            printf("[-] Error writing cryptid value\n");
+            fprintf(stderr, "[-] Error writing cryptid value\n");
             _exit(6);
         }
+        printf("cryptoff=%u\n", cryptoff);
+        printf("cryptsize=%u\n", eic->cryptsize);
     }
+}
+
+void dump_header(char *rpath, char *dumpfile, uint32_t offset, uint32_t cryptoff, uint32_t cryptsize) {
+    int i, fd, r;
+    
+    fprintf(stderr, "[+] Opening %s for reading.\n", rpath);
+    fd = open(rpath, O_RDONLY);
+    if (fd == -1) {
+        fprintf(stderr, "[-] Failed opening.\n");
+        _exit(1);
+    }
+    
+    /* calculate address of beginning of crypted data */
+    n = offset + cryptoff;
+    
+    restsize = lseek(fd, 0, SEEK_END) - n - cryptsize;
+    lseek(fd, 0, SEEK_SET);
+    
+    fprintf(stderr, "[+] Copying the not encrypted start of the filen");
+    /* first copy all the data before the encrypted data */
+    while (n > 0) {
+        toread = (n > sizeof(buffer)) ? sizeof(buffer) : n;
+        r = read(fd, buffer, toread);
+        if (r != toread) {
+            fprintf(stderr, "[-] Error reading filen");
+            _exit(1);
+        }
+        n -= r;
+        
+        r = write(outfd, buffer, toread);
+        if (r != toread) {
+            fprintf(stderr, "[-] Error writing filen");
+            _exit(1);
+        }
+    }
+    
+
+    
 }

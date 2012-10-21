@@ -47,6 +47,7 @@
 
 #define ARMV6 6
 #define ARMV7 9
+#define ARMV7S 11
 
 struct ProgramVars {
     struct mach_header *mh;
@@ -67,7 +68,7 @@ void dump_binary(char *rpath, char *dumpfile, uint32_t offset, struct ProgramVar
  
  */
 struct fat_header* getHeader(char *rpath) {
-    char buffer[1024];
+    char buffer[4096];
     int fd, n;
     printf("[+] Opening %s for reading.\n", rpath);
     fd = open(rpath, O_RDONLY);
@@ -111,7 +112,7 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
     struct fat_header *fh;
     struct fat_arch *arch;
     struct mach_header *mh;
-    char buffer[1024];
+    char buffer[4096];
     char arch_buffer[3072];
     char rpath[4096], npath[4096];	/* should be big enough for PATH_MAX */
     char dumpfile[4096], binary[4096];	//yolo
@@ -143,7 +144,55 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
 
         }
         else if (strcmp(argv[1], "swap") == 0) {
-            //check if fat
+            unsigned long arch; //yolo
+            char rpath[4096];
+            
+            if (realpath(argv[0], rpath) == NULL) {
+                strlcpy(rpath, argv[0], sizeof(rpath));
+            }
+            strlcpy(dumpfile, argv[2], sizeof(dumpfile));
+            arch = strtoul(argv[3], 0, 0);
+            if ((arch != ARMV7) && (arch != ARMV6) && (arch != ARMV7S)) {
+                printf("[-] Unknown arch %lu", arch);
+                _exit(5);
+            }
+            if (arch == pvars->mh->cpusubtype) {
+                printf("[-] Nothing to swap");
+                _exit(1);
+            }
+            struct fat_header *fh = getHeader(rpath);
+            uint32_t cpusubtype;
+            
+            if (realpath(argv[0], rpath) == NULL) {
+                strlcpy(rpath, argv[0], sizeof(rpath));
+            }
+            
+            struct fat_arch* farch = (struct fat_arch *) &fh[1];
+            bool found1, found2;
+            for (i = 0; i < swap32(fh->nfat_arch); i++) {
+                cpusubtype = swap32(farch->cpusubtype);
+                if (cpusubtype == arch) {
+                    found1 = TRUE;
+                    farch->cpusubtype = pvars->mh->cpusubtype; //swag
+                }
+                else if (cpusubtype == pvars->mh->cpusubtype) {
+                    found2 = TRUE;
+                    farch->cpusubtype = arch;
+                }
+                farch++;
+            }
+            if ((!found2) || (!found1)) {
+                printf("[-] Error: could not find the 2 architectures to swap");
+                _exit(9);
+            }
+            
+            //write it back #swag
+            FILE *dafile = fopen(rpath, "r+");
+            fseek(dafile, 0, SEEK_SET);
+            fwrite(fh, 1, sizeof(struct fat_header), dafile);
+           
+        }
+        else if (strcmp(argv[1], "yolo ") == 0) { //check if fat
             if (realpath(argv[0], rpath) == NULL) {
                 strlcpy(rpath, argv[0], sizeof(rpath));
             }

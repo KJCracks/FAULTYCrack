@@ -85,7 +85,7 @@ function crack {
       echo "$num: Unable to Find Executable"
       let removes+=1; continue
    fi
-   ln -s $AppPath $tmp/Payload
+    ln -s $AppPath $tmp/Payload
    #patch iTunesMetadata
    export IPA="~/Documents/Cracked/$AppDisplayName-v$AppVer-$CrackerName.ipa"
    if [ -e "$AppPath/AppName/iTunesMetadata.plist" ];then
@@ -132,9 +132,9 @@ function crack {
       echo -e "</plist>" >> "$tmp/iTunesMetadata.plist"
       ThankYouRastignacAGAIN=$(plutil -binary "$tmp/iTunesMetadata.plist" 2>&1> /dev/null)
       MADHOUSEMADHOUSE=$(plutil -binary "$tmp/iTunesMetadata.plist")
-      
-      #pack non-essential stuff
-      jongun=$(cd $"tmp"; zip -u -y -r "$IPA" Payload/* -x Payload/iTunesArtwork Payload/iTunesMetadata.plist Payload/Documents/* Payload/Library/* Payload/tmp/* "Payload/*/$AppExec" Payload/*/SC_Info/* & 2>&1> /dev/null)
+
+#pack non-essential stuff
+jongun=$(cd $"tmp"; zip -u -y -r "$IPA" Payload/* -x Payload/iTunesArtwork Payload/iTunesMetadata.plist Payload/Documents/* Payload/Library/* Payload/tmp/* "Payload/*/$AppExec" Payload/*/SC_Info/* & 2>&1> /dev/null")
    fi
    
    tmpexec="$tmp/$AppExec.decrypted"

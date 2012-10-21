@@ -43,6 +43,7 @@
 #include <fcntl.h>
 #include <mach-o/fat.h>
 #include <mach-o/loader.h>
+#include <stdbool.h>
 
 #define ARMV6 6
 #define ARMV7 9
@@ -55,8 +56,6 @@ struct ProgramVars {
     const char **__prognamePtr;
 };
 
-typedef enum { false, true } bool;
-
 void dump_binary(char *rpath, char *dumpfile, uint32_t offset, struct ProgramVars *pvars);
 
 #define swap32(value) (((value & 0xFF000000) >> 24) | ((value & 0x00FF0000) >> 8) | ((value & 0x0000FF00) << 8) | ((value & 0x000000FF) << 24) )
@@ -67,6 +66,42 @@ void dump_binary(char *rpath, char *dumpfile, uint32_t offset, struct ProgramVar
  dump  
  
  */
+struct fat_header* getHeader(char *rpath) {
+    char buffer[1024];
+    int fd, n;
+    printf("[+] Opening %s for reading.\n", rpath);
+    fd = open(rpath, O_RDONLY);
+    if (fd == -1) {
+        printf("[-] Failed opening.\n");
+        _exit(4);
+    }
+    printf("[+] Reading header\n");
+    n = read(fd, (void *) buffer, sizeof(buffer));	
+    if (n != sizeof(buffer)) {
+        printf("[W] Warning read only %d bytes\n", n);
+    }
+    
+    printf("[+] Detecting header type\n");
+    close(fd);
+    struct fat_header* fh =(struct fat_header *) buffer;
+    return fh;
+}
+bool isFat(char* rpath) {
+    struct fat_header* fh = getHeader(rpath);
+    /* Is this a FAT file - we assume the right endianess */
+    if (fh->magic == FAT_CIGAM) {
+        printf("[+] Executable is a FAT binary\n");
+        return true;
+    }
+    else if (fh->magic == MH_MAGIC) {
+        printf("[+] Executable is a thin binary\n");
+        return false;
+    }
+    else {
+        printf("[-] Executable is of unknown type\n");
+        return false;
+    }
+}
 
 __attribute__ ((constructor))
 void dumptofile(int argc, const char **argv, const char **envp, const char **apple, struct ProgramVars *pvars)
@@ -77,6 +112,7 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
     struct fat_arch *arch;
     struct mach_header *mh;
     char buffer[1024];
+    char arch_buffer[3072];
     char rpath[4096], npath[4096];	/* should be big enough for PATH_MAX */
     char dumpfile[4096], binary[4096];	//yolo
     unsigned int fileoffs = 0, off_cryptid = 0, restsize;
@@ -93,31 +129,42 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
             dump_binary(binary, dumpfile, offset, pvars);
             _exit(1);
         }
-        
-        else if (strcmp(argv[1], "findoff") == 0) {
+        else if (strcmp(argv[1], "isfat") == 0) {
+            if (realpath(argv[0], rpath) == NULL) {
+                strlcpy(rpath, argv[0], sizeof(rpath));
+            }
+            if (isFat(rpath)) {
+                fprintf(stderr, "isfat=1\n");
+            }
+            else {
+                fprintf(stderr, "isfat=0\n");
+            }
+            _exit(1);
+
+        }
+        else if (strcmp(argv[1], "swap") == 0) {
             //check if fat
             if (realpath(argv[0], rpath) == NULL) {
                 strlcpy(rpath, argv[0], sizeof(rpath));
             }
-            fprintf(stderr, "[+] Opening %s for reading.\n", rpath);
+            printf("[+] Opening %s for reading.\n", rpath);
             fd = open(rpath, O_RDONLY);
             if (fd == -1) {
-                fprintf(stderr, "[-] Failed opening.\n");
+                printf("[-] Failed opening.\n");
                 _exit(4);
             }
             
-            fprintf(stderr, "[+] Reading headern");
-            n = read(fd, (void *) buffer, sizeof(buffer));	//yolo cuz fat_arch is useless
-            if (n != sizeof(buffer)) {
-                fprintf(stderr, "[W] Warning read only %d bytes\n", n);
+            printf("[+] Reading headern");
+            n = read(fd, (void *) buffer, sizeof(buffer));	
+                if (n != sizeof(buffer)) {
+                printf("[W] Warning read only %d bytes\n", n);
             }
             
-            fprintf(stderr, "[+] Detecting header type\n");
+            printf("[+] Detecting header type\n");
             fh = (struct fat_header *) buffer;
-            
             /* Is this a FAT file - we assume the right endianess */
             if (fh->magic == FAT_CIGAM) {
-                fprintf(stderr, "[+] Executable is a FAT image - searching for offset\n");
+                printf("[+] Executable is a FAT image - searching for offset\n");
                 arch = (struct fat_arch *) &fh[1];
                 uint32_t armv6_offset = 0, armv7_offset = 0, cputype, cpusubtype;
                 //uint32_t iPhone5_offset;
@@ -126,11 +173,11 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
                     cpusubtype = swap32(arch->cpusubtype);
                     if ((cputype == 12) && (cpusubtype == ARMV6)) {
                         armv6_offset = swap32(arch->offset);
-                        fprintf(stderr, "[+] Found ARMV6 offset at %u\n", armv6_offset);
+                        printf("[+] Found ARMV6 offset at %u\n", armv6_offset);
                         break;
                     } else if ((cputype == 12) && (cpusubtype == ARMV7)) {
                         armv7_offset = swap32(arch->offset);
-                        fprintf(stderr, "[+] Found ARMV7 offset at %u\n", armv7_offset);
+                        printf("[+] Found ARMV7 offset at %u\n", armv7_offset);
                         break;
                     }
                     /* iPhone 5
@@ -139,38 +186,38 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
                      
                      if ((pvars->mh->cputype == swap32(arch->cputype)) && (pvars->mh->cpusubtype == swap32(arch->cpusubtype))) {
                      fileoffs = swap32(arch->offset);
-                     fprintf(stderr, "[+] Correct arch is at offset %u in the filen", fileoffs);
-                     fprintf(stderr, "cputype %u, cpusubtype %un", swap32(arch->cputype), swap32(arch->cputype));
+                     printf("[+] Correct arch is at offset %u in the filen", fileoffs);
+                     printf("cputype %u, cpusubtype %un", swap32(arch->cputype), swap32(arch->cputype));
                      break;
                      } */
                     
                     arch++;
                 }
                 if ((armv6_offset == 0) || (armv7_offset == 0)) {
-                    fprintf(stderr, "[-] Could not find correct arch in FAT image\n");
+                    printf("[-] Could not find correct arch in FAT image\n");
                     _exit(11);
                 }
                 printf("armv7_offset=%u\n", armv7_offset);
                 printf("armv6_offset=%u\n", armv6_offset);
                 _exit(1); //yay!
             } else if (fh->magic == MH_MAGIC) {
-                fprintf(stderr, "[+] Executable is a plain MACH-O image\n");
+                printf("[+] Executable is a plain MACH-O image\n");
                 printf("thin_binary=1\n");
                 _exit(1);
             } else {
-                fprintf(stderr, "[-] Executable is of unknown type\n");
+                printf("[-] Executable is of unknown type\n");
                 _exit(12);
                 
             }
         }
     }
     
-    fprintf(stderr, "mach-o decryption dumpern\n");
+    printf("mach-o decryption dumpern\n");
     /* searching all load commands for an LC_ENCRYPTION_INFO load command */
     lc = (struct load_command *) ((unsigned char *) pvars->mh + sizeof(struct mach_header));
     
     for (i = 0; i < pvars->mh->ncmds; i++) {
-        fprintf(stderr, "Load Command (%d): %08xn", i, lc->cmd);
+        printf("Load Command (%d): %08xn", i, lc->cmd);
         
         if (lc->cmd == LC_ENCRYPTION_INFO) {
             eic = (struct encryption_info_command *) lc;
@@ -180,26 +227,26 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
                 break;
             }
             off_cryptid = (off_t) ((void *) &eic->cryptid - (void *) pvars->mh);
-            fprintf(stderr, "[+] Found encrypted data at address %08x of length %u bytes - type %u.n", eic->cryptoff, eic->cryptsize, eic->cryptid);
+            printf("[+] Found encrypted data at address %08x of length %u bytes - type %u.n", eic->cryptoff, eic->cryptsize, eic->cryptid);
             
             if (realpath(argv[0], rpath) == NULL) {
                 strlcpy(rpath, argv[0], sizeof(rpath));
             }
             
-            fprintf(stderr, "[+] Opening %s for reading.n", rpath);
+            printf("[+] Opening %s for reading.n", rpath);
             fd = open(rpath, O_RDONLY);
             if (fd == -1) {
-                fprintf(stderr, "[-] Failed opening.n");
+                printf("[-] Failed opening.n");
                 _exit(1);
             }
             
-            fprintf(stderr, "[+] Reading headern");
+            printf("[+] Reading headern");
             n = read(fd, (void *) buffer, sizeof(buffer));	//yolo cuz fat_arch is useless
             if (n != sizeof(buffer)) {
-                fprintf(stderr, "[W] Warning read only %d bytesn", n);
+                printf("[W] Warning read only %d bytesn", n);
             }
             
-            fprintf(stderr, "[+] Detecting header typen");
+            printf("[+] Detecting header typen");
             fh = (struct fat_header *) buffer;
             
             /* Is this a FAT file - we assume the right endianess */
@@ -211,13 +258,13 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
                 //dump it
                 //return back
                 
-                fprintf(stderr, "[+] Executable is a FAT image - searching for right architecturen");
+                printf("[+] Executable is a FAT image - searching for right architecturen");
                 arch = (struct fat_arch *) &fh[1];
                 for (i = 0; i < swap32(fh->nfat_arch); i++) {
                     if ((pvars->mh->cputype == swap32(arch->cputype)) && (pvars->mh->cpusubtype == swap32(arch->cpusubtype))) {
                         fileoffs = swap32(arch->offset);
-                        fprintf(stderr, "[+] Correct arch is at offset %u in the filen", fileoffs);
-                        fprintf(stderr, "cputype %u, cpusubtype %un", swap32(arch->cputype), swap32(arch->cputype));
+                        printf("[+] Correct arch is at offset %u in the filen", fileoffs);
+                        printf("cputype %u, cpusubtype %un", swap32(arch->cputype), swap32(arch->cputype));
                         break;
                     }
                     
@@ -225,37 +272,37 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
                 }
                 
                 if (fileoffs == 0) {
-                    fprintf(stderr, "[-] Could not find correct arch in FAT imagen");
+                    printf("[-] Could not find correct arch in FAT imagen");
                     _exit(1);
                 }
             } else if (fh->magic == MH_MAGIC) {
-                fprintf(stderr, "[+] Executable is a plain MACH-O imagen");
+                printf("[+] Executable is a plain MACH-O imagen");
             } else {
-                fprintf(stderr, "[-] Executable is of unknown typen");
+                printf("[-] Executable is of unknown typen");
                 _exit(1);
             }
             
             /* extract basename */
             tmp = strrchr(rpath, '/');
             if (tmp == NULL) {
-                fprintf(stderr, "[-] Unexpected error with filename.n");
+                printf("[-] Unexpected error with filename.n");
                 _exit(1);
             }
             strlcpy(npath, tmp + 1, sizeof(npath));
             strlcat(npath, ".decrypted", sizeof(npath));
             strlcpy(buffer, npath, sizeof(buffer));
             
-            fprintf(stderr, "[+] Opening %s for writing.n", npath);
+            printf("[+] Opening %s for writing.n", npath);
             outfd = open(npath, O_RDWR | O_CREAT | O_TRUNC, 0644);
             if (outfd == -1) {
                 if (strncmp("/private/var/mobile/Applications/", rpath, 33) == 0) {
-                    fprintf(stderr, "[-] Failed opening. Most probably a sandbox issue. Trying something different.n");
+                    printf("[-] Failed opening. Most probably a sandbox issue. Trying something different.n");
                     
                     /* create new name */
                     strlcpy(npath, "/private/var/mobile/Applications/", sizeof(npath));
                     tmp = strchr(rpath + 33, '/');
                     if (tmp == NULL) {
-                        fprintf(stderr, "[-] Unexpected error with filename.n");
+                        printf("[-] Unexpected error with filename.n");
                         _exit(1);
                     }
                     tmp++;
@@ -263,12 +310,12 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
                     strlcat(npath, rpath + 33, sizeof(npath));
                     strlcat(npath, "tmp/", sizeof(npath));
                     strlcat(npath, buffer, sizeof(npath));
-                    fprintf(stderr, "[+] Opening %s for writing.n", npath);
+                    printf("[+] Opening %s for writing.n", npath);
                     outfd = open(npath, O_RDWR | O_CREAT | O_TRUNC, 0644);
                 }
                 if (outfd == -1) {
                     perror("[-] Failed opening");
-                    fprintf(stderr, "n");
+                    printf("n");
                     _exit(1);
                 }
             }
@@ -279,20 +326,20 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
             restsize = lseek(fd, 0, SEEK_END) - n - eic->cryptsize;
             lseek(fd, 0, SEEK_SET);
             
-            fprintf(stderr, "[+] Copying the not encrypted start of the filen");
+            printf("[+] Copying the not encrypted start of the filen");
             /* first copy all the data before the encrypted data */
             while (n > 0) {
                 toread = (n > sizeof(buffer)) ? sizeof(buffer) : n;
                 r = read(fd, buffer, toread);
                 if (r != toread) {
-                    fprintf(stderr, "[-] Error reading filen");
+                    printf("[-] Error reading filen");
                     _exit(1);
                 }
                 n -= r;
                 
                 r = write(outfd, buffer, toread);
                 if (r != toread) {
-                    fprintf(stderr, "[-] Error writing filen");
+                    printf("[-] Error writing filen");
                     _exit(1);
                 }
             }
@@ -300,36 +347,36 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
             
             
             /* now write the previously encrypted data (header) */
-            fprintf(stderr, "[+] Dumping the decrypted data into the filen");
+            printf("[+] Dumping the decrypted data into the filen");
             r = write(outfd, (unsigned char *) pvars->mh + eic->cryptoff, eic->cryptsize);
             if (r != eic->cryptsize) {
-                fprintf(stderr, "[-] Error writing filen");
+                printf("[-] Error writing filen");
                 _exit(1);
             }
             
             /* and finish with the remainder of the file */
             n = restsize;
             lseek(fd, eic->cryptsize, SEEK_CUR);
-            fprintf(stderr, "[+] Copying the not encrypted remainder of the filen");
+            printf("[+] Copying the not encrypted remainder of the filen");
             while (n > 0) {
                 toread = (n > sizeof(buffer)) ? sizeof(buffer) : n;
                 r = read(fd, buffer, toread);
                 if (r != toread) {
-                    fprintf(stderr, "[-] Error reading filen");
+                    printf("[-] Error reading filen");
                     _exit(1);
                 }
                 n -= r;
                 
                 r = write(outfd, buffer, toread);
                 if (r != toread) {
-                    fprintf(stderr, "[-] Error writing filen");
+                    printf("[-] Error writing filen");
                     _exit(1);
                 }
             }
             
-            fprintf(stderr, "[+] Closing original filen");
+            printf("[+] Closing original filen");
             close(fd);
-            fprintf(stderr, "[+] Closing dump filen");
+            printf("[+] Closing dump filen");
             close(outfd);
             
             _exit(1);
@@ -337,7 +384,7 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
         
         lc = (struct load_command *) ((unsigned char *) lc + lc->cmdsize);
     }
-    fprintf(stderr, "[-] This mach-o file is not encrypted. Nothing was decrypted.n");
+    printf("[-] This mach-o file is not encrypted. Nothing was decrypted.n");
     _exit(1);
 }
 
@@ -355,7 +402,7 @@ void dump_binary(char *rpath, char *dumpfile, uint32_t offset, struct ProgramVar
     lc = (struct load_command *) ((unsigned char *) pvars->mh + sizeof(struct mach_header));
     
     for (i = 0; i < pvars->mh->ncmds; i++) {
-        fprintf(stderr, "Load Command (%d): %08xn", i, lc->cmd);
+        printf("Load Command (%d): %08xn", i, lc->cmd);
         if (lc->cmd == LC_ENCRYPTION_INFO) {
             eic = (struct encryption_info_command *) lc;
             
@@ -365,15 +412,15 @@ void dump_binary(char *rpath, char *dumpfile, uint32_t offset, struct ProgramVar
                 _exit(5);
             }
             off_cryptid = (off_t) ((void *) &eic->cryptid - (void *) pvars->mh);
-            fprintf(stderr, "[+] offset to cryptid found: @%p(from %p) = %x\n", &eic->cryptid, pvars->mh, off_cryptid);
-            fprintf(stderr, "[+] Found encrypted data at address %08x of length %u bytes - type %u.\n", eic->cryptoff, eic->cryptsize, eic->cryptid);
+            printf("[+] offset to cryptid found: @%p(from %p) = %x\n", &eic->cryptid, pvars->mh, off_cryptid);
+            printf("[+] Found encrypted data at address %08x of length %u bytes - type %u.\n", eic->cryptoff, eic->cryptsize, eic->cryptid);
             foundCrypt = TRUE;
         }
         else if (lc->cmd == LC_SEGMENT) {
             /*sc = (struct segment_commmand_do *) lc;
             uint32_t fourzeroninesix = 4096;
             if (sc->vmaddr != &fourzeroninesix) { //help!!!11
-                fprintf(stderr, "[+] Capitalist developers tried to change the vmaddr!"); //thanks Rastingac
+                printf("[+] Capitalist developers tried to change the vmaddr!"); //thanks Rastingac
                 text_start = sc->vmaddr;
                 foundSegment = TRUE;
             }*/
@@ -385,10 +432,10 @@ void dump_binary(char *rpath, char *dumpfile, uint32_t offset, struct ProgramVar
         lc = (struct load_command *) ((unsigned char *) lc + lc->cmdsize);
     }
     
-    fprintf(stderr, "[+] Opening %s for reading.\n", rpath);
+    printf("[+] Opening %s for reading.\n", rpath);
     fd = open(rpath, O_RDONLY);
     if (fd == -1) {
-        fprintf(stderr, "[-] Failed opening.\n");
+        printf("[-] Failed opening.\n");
         _exit(1);
     }
     
@@ -408,19 +455,19 @@ void dump_binary(char *rpath, char *dumpfile, uint32_t offset, struct ProgramVar
     }
     
     /* now write the previously encrypted data (header) */
-    fprintf(stderr, "[+] Dumping the decrypted data into the file\n");
+    printf("[+] Dumping the decrypted data into the file\n");
     int r = write(outfile, (unsigned char *) pvars->mh + cryptoff, eic->cryptsize);
     if (r != eic->cryptsize) {
-        fprintf(stderr, "[-] Error writing file\n");
+        printf("[-] Error writing file\n");
         
     }
     //patch the cryptid
     if (off_cryptid) {
         uint32_t zero=0;
         off_cryptid+=offset;
-        fprintf(stderr, "[+] Setting the LC_ENCRYPTION_INFO->cryptid to 0 at offset %x\n", off_cryptid);
+        printf("[+] Setting the LC_ENCRYPTION_INFO->cryptid to 0 at offset %x\n", off_cryptid);
         if (lseek(outfile, off_cryptid, SEEK_SET) != off_cryptid || write(outfile, &zero, 4) != 4) {
-            fprintf(stderr, "[-] Error writing cryptid value\n");
+            printf("[-] Error writing cryptid value\n");
             _exit(6);
         }
         printf("cryptoff=%u\n", cryptoff);
@@ -431,10 +478,10 @@ void dump_binary(char *rpath, char *dumpfile, uint32_t offset, struct ProgramVar
 //void dump_header(char *rpath, char *dumpfile, uint32_t offset, uint32_t cryptoff, uint32_t cryptsize) {
 //    int i, fd, r;
 //    
-//    fprintf(stderr, "[+] Opening %s for reading.\n", rpath);
+//    printf("[+] Opening %s for reading.\n", rpath);
 //    fd = open(rpath, O_RDONLY);
 //    if (fd == -1) {
-//        fprintf(stderr, "[-] Failed opening.\n");
+//        printf("[-] Failed opening.\n");
 //        _exit(1);
 //    }
 //    
@@ -444,20 +491,20 @@ void dump_binary(char *rpath, char *dumpfile, uint32_t offset, struct ProgramVar
 //    restsize = lseek(fd, 0, SEEK_END) - n - cryptsize;
 //    lseek(fd, 0, SEEK_SET);
 //    
-//    fprintf(stderr, "[+] Copying the not encrypted start of the filen");
+//    printf("[+] Copying the not encrypted start of the filen");
 //    /* first copy all the data before the encrypted data */
 //    while (n > 0) {
 //        toread = (n > sizeof(buffer)) ? sizeof(buffer) : n;
 //        r = read(fd, buffer, toread);
 //        if (r != toread) {
-//            fprintf(stderr, "[-] Error reading filen");
+//            printf("[-] Error reading filen");
 //            _exit(1);
 //        }
 //        n -= r;
 //        
 //        r = write(outfd, buffer, toread);
 //        if (r != toread) {
-//            fprintf(stderr, "[-] Error writing filen");
+//            printf("[-] Error writing filen");
 //            _exit(1);
 //        }
 //    }

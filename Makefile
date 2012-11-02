@@ -1,23 +1,8 @@
-#BIN = /Developer/Platforms/iPhoneOS.platform/Developer/usr/bin
-BIN = /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin
-#GCC_BIN = $(BIN)/gcc-4.2
-GCC_BIN = $(BIN)/gcc
-#GCC = $(GCC_BASE) -arch armv6
-GCC = $(GCC_BASE) -arch armv7
-GCC_UNIVERSAL = $(GCC_BASE) -arch armv6 -arch armv7
-GCC_NATIVE = c99
-#SDK=/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS4.3.sdk/
-SDK=/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS5.1.sdk/
-CFLAGS = 
-GCC_BASE = $(GCC_BIN) -Os $(CFLAGS) -Wimplicit -isysroot $(SDK) -F $(SDK)System/Library/Frameworks -F$(SDK)System/Library/PrivateFrameworks
+include theos/makefiles/common.mk
 
-all: dumpdecrypted.dylib
+TWEAK_NAME = FAULTYCrack
+FAULTYCrack_FILES = faultycrack.c
 
-dumpdecrypted.dylib: dumpdecrypted.o 
-	$(GCC_UNIVERSAL) -dynamiclib -o $@ $^
+include $(THEOS_MAKE_PATH)/tweak.mk
 
-%.o: %.c
-	$(GCC_UNIVERSAL) -dynamiclib -c -o $@ $< 
 
-clean:
-	rm -f *.o dumpdecrypted.dylib

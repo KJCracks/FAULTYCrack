@@ -67,23 +67,14 @@ void dump_binary(char *rpath, char *dumpfile, uint32_t offset, struct ProgramVar
  dump  
  
  */
-struct fat_header* getHeader(char *rpath) {
+struct fat_header* getHeader(FILE* binary) {
     char buffer[4096];
-    int fd, n;
-    printf("[+] Opening %s for reading.\n", rpath);
-    fd = open(rpath, O_RDONLY);
-    if (fd == -1) {
-        printf("[-] Failed opening.\n");
-        _exit(4);
-    }
+    size_t result;
     printf("[+] Reading header\n");
-    n = read(fd, (void *) buffer, sizeof(buffer));	
-    if (n != sizeof(buffer)) {
+    result = fread(&bufer, sizeof(buffer), 1, binary);	
+    if (result != sizeof(buffer)) {
         printf("[W] Warning read only %d bytes\n", n);
     }
-    
-    printf("[+] Detecting header type\n");
-    close(fd);
     struct fat_header* fh =(struct fat_header *) buffer;
     return fh;
 }
@@ -104,6 +95,17 @@ bool isFat(char* rpath) {
     }
 }
 
+uint32_t getOffset(struct fat_header* fh, int archtype) {
+    struct fat_arch* arch = (struct fat_arch *) &fh[1];
+    for (i = 0; i < swap32(fh->nfat_arch); i++) {
+        printf("swag yolo %i\n", swap32(arch->cpusubtype));
+        if (swap32(arch->cpusubtype) == archtype) {
+            return arch.offset;
+        }
+        arch++;
+    }
+}
+
 __attribute__ ((constructor))
 void dumptofile(int argc, const char **argv, const char **envp, const char **apple, struct ProgramVars *pvars)
 {
@@ -113,21 +115,26 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
     struct fat_arch *arch;
     char buffer[4096];
     char rpath[4096], npath[4096];	/* should be big enough for PATH_MAX */
-    char dumpfile[4096], binary[4096];	//yolo
+    char dumpfile[4096];	//yolo
     unsigned int fileoffs = 0, off_cryptid = 0, restsize;
     uint32_t offset;
     int i, fd, outfd, r, n, toread;
     char *tmp;
     if (argc > 1) {
         if (strcmp(argv[1], "dump") == 0) {
-            if (realpath(argv[2], rpath) == NULL) {
-                strlcpy(rpath, argv[2], sizeof(rpath));
+            int arch;
+            
+            if (realpath(argv[0], rpath) == NULL) {
+                strlcpy(rpath, argv[3], sizeof(rpath));
             }
-            strlcpy(dumpfile, argv[2], sizeof(dumpfile));
-            strlcpy(binary, argv[0], sizeof(binary));
-            printf("SWAG YOLO"); 
-            sscanf(argv[3], "%" SCNu32, &offset); //dumb
-            printf("SWAG YOLO 123");
+            FILE* oldbinary = fopen(rpath, "r+");
+            
+            if (realpath(argv[3], dumpfile) == NULL) {
+                strlcpy(dumpfile, argv[3], sizeof(rpath));
+            }
+            arch = atoi(argv[2]);
+            printf("[+] Preparing to dump binary");
+            uint32_t offset = 
             dump_binary(binary, dumpfile, offset, pvars);
             _exit(1);
         }

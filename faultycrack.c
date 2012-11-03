@@ -57,8 +57,6 @@ struct ProgramVars {
     const char **__prognamePtr;
 };
 
-void dump_binary(char *rpath, char *dumpfile, uint32_t offset, struct ProgramVars *pvars);
-
 #define swap32(value) (((value & 0xFF000000) >> 24) | ((value & 0x00FF0000) >> 8) | ((value & 0x0000FF00) << 8) | ((value & 0x000000FF) << 24) )
 
 /*
@@ -67,19 +65,96 @@ void dump_binary(char *rpath, char *dumpfile, uint32_t offset, struct ProgramVar
  dump  
  
  */
+
+
+
+void dump_binary(FILE* newbinary, uint32_t offset, struct ProgramVars *pvars, struct fat_header* mh)
+{
+    struct encryption_info_command *eic;
+    struct load_command *lc;
+    uint32_t off_cryptid, text_start = 0, cryptoff;
+    int i;
+    bool foundCrypt = FALSE, foundSegment = FALSE; //probably unncessary 
+    
+    //find the cryptid/offset for the particular arch 
+    lc = (struct load_command *) ((unsigned char *) pvars->mh + sizeof(struct mach_header));
+    
+    for (i = 0; i < pvars->mh->ncmds; i++) {
+        printf("Load Command (%d): %08xn", i, lc->cmd);
+        if (lc->cmd == LC_ENCRYPTION_INFO) {
+            eic = (struct encryption_info_command *) lc;
+            
+            /* If this load command is present, but data is not crypted then exit */
+            if (eic->cryptid == 0) {
+                printf("[-] Application is already cracked?!//3321222 yolo");
+                break;
+                _exit(5);
+            }
+            off_cryptid = (off_t) ((void *) &eic->cryptid - (void *) pvars->mh);
+            printf("[+] offset to cryptid found: @%p(from %p) = %x\n", &eic->cryptid, pvars->mh, off_cryptid);
+            printf("[+] Found encrypted data at address %08x of length %u bytes - type %u.\n", eic->cryptoff, eic->cryptsize, eic->cryptid);
+            foundCrypt = TRUE;
+        }
+        else if (lc->cmd == LC_SEGMENT) {
+            /*sc = (struct segment_commmand_do *) lc;
+             uint32_t fourzeroninesix = 4096;
+             if (sc->vmaddr != &fourzeroninesix) { //help!!!11
+             printf("[+] Capitalist developers tried to change the vmaddr!"); //thanks Rastingac
+             text_start = sc->vmaddr;
+             foundSegment = TRUE;
+             }*/
+            foundSegment = TRUE;
+        }
+        if (foundCrypt && foundSegment) {
+            break;
+        }
+        lc = (struct load_command *) ((unsigned char *) lc + lc->cmdsize);
+    }
+    
+    fseek(newbinary, offset, SEEK_SET);	//go to the offset
+    
+    /* we only add back the mach header and extra stuff later */
+    
+    if (text_start != 0) {
+        cryptoff = eic->cryptoff + text_start;
+    }
+    else {
+        cryptoff = eic->cryptoff;
+    }
+    
+    /* now write the previously encrypted data (header) */
+    printf("[+] Dumping the decrypted data into the file\n");
+    int r = fwrite((unsigned char *) pvars->mh + cryptoff, 1, eic->cryptsize, newbinary);
+    if (r != eic->cryptsize) {
+        printf("[-] Error writing file\n");
+        _exit(11);
+    }   
+    //patch the cryptid
+    if (off_cryptid) {
+        uint32_t zero=0;
+        off_cryptid+=offset;
+        printf("[+] Setting the LC_ENCRYPTION_INFO->cryptid to 0 at offset %x\n", off_cryptid);
+        if (fseek(newbinary, off_cryptid, SEEK_SET) != off_cryptid || fwrite(&zero, 1, 4, newbinary) != 4) {
+            printf("[-] Error writing cryptid value\n");
+            _exit(6);
+        }
+        fprintf(stderr, "cryptoff=%u\n", cryptoff);
+        fprintf(stderr, "cryptsize=%u\n", eic->cryptsize);
+    }
+}
 struct fat_header* getHeader(FILE* binary) {
     char buffer[4096];
-    size_t result;
+    int result;
     printf("[+] Reading header\n");
-    result = fread(&bufer, sizeof(buffer), 1, binary);	
+    result = fread(&buffer, sizeof(buffer), 1, binary);	
     if (result != sizeof(buffer)) {
-        printf("[W] Warning read only %d bytes\n", n);
+        printf("[W] Warning read only %d bytes\n", result);
     }
     struct fat_header* fh =(struct fat_header *) buffer;
     return fh;
 }
-bool isFat(char* rpath) {
-    struct fat_header* fh = getHeader(rpath);
+bool isFat(FILE* binary) {
+    struct fat_header* fh = getHeader(binary);
     /* Is this a FAT file - we assume the right endianess */
     if (fh->magic == FAT_CIGAM) {
         printf("[+] Executable is a FAT binary\n");
@@ -96,14 +171,16 @@ bool isFat(char* rpath) {
 }
 
 uint32_t getOffset(struct fat_header* fh, int archtype) {
+    int i;
     struct fat_arch* arch = (struct fat_arch *) &fh[1];
     for (i = 0; i < swap32(fh->nfat_arch); i++) {
         printf("swag yolo %i\n", swap32(arch->cpusubtype));
         if (swap32(arch->cpusubtype) == archtype) {
-            return arch.offset;
+            return arch->offset;
         }
         arch++;
     }
+    return 0;
 }
 
 __attribute__ ((constructor))
@@ -115,9 +192,8 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
     struct fat_arch *arch;
     char buffer[4096];
     char rpath[4096], npath[4096];	/* should be big enough for PATH_MAX */
-    char dumpfile[4096];	//yolo
+    char dump_path[4096];	//yolo
     unsigned int fileoffs = 0, off_cryptid = 0, restsize;
-    uint32_t offset;
     int i, fd, outfd, r, n, toread;
     char *tmp;
     if (argc > 1) {
@@ -128,14 +204,16 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
                 strlcpy(rpath, argv[3], sizeof(rpath));
             }
             FILE* oldbinary = fopen(rpath, "r+");
-            
-            if (realpath(argv[3], dumpfile) == NULL) {
-                strlcpy(dumpfile, argv[3], sizeof(rpath));
+            if (realpath(argv[3], dump_path) == NULL) {
+                strlcpy(dump_path, argv[3], sizeof(rpath));
             }
+            FILE* newbinary = fopen(dump_path, "r+");
             arch = atoi(argv[2]);
             printf("[+] Preparing to dump binary");
-            uint32_t offset = 
-            dump_binary(binary, dumpfile, offset, pvars);
+            struct fat_header* fh = getHeader(oldbinary);
+            uint32_t offset = getOffset(fh, arch);
+            
+            dump_binary(newbinary, offset, pvars, fh);
             _exit(1);
         }
         else if (strcmp(argv[1], "offsets") == 0) {
@@ -146,8 +224,8 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
             bool has_armv7 = FALSE, has_armv6 = FALSE;
             struct fat_arch *arch;
             arch = (struct fat_arch *) &fh[1];
-            
-            struct fat_header* fh = getHeader(rpath);
+            FILE* binary = fopen(rpath, "r+");
+            struct fat_header* fh = getHeader(binary);
             
             int archcount;
             
@@ -178,19 +256,6 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
                 arch++;
             }
             fprintf(stderr, "archcount=%i", archcount);
-            _exit(1);
-
-        }
-        else if (strcmp(argv[1], "isfat") == 0) {
-            if (realpath(argv[0], rpath) == NULL) {
-                strlcpy(rpath, argv[0], sizeof(rpath));
-            }
-            if (isFat(rpath)) {
-                fprintf(stderr, "isfat=1\n");
-            }
-            else {
-                fprintf(stderr, "isfat=0\n");
-            }
             _exit(1);
 
         }
@@ -372,92 +437,7 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
 }
 
 
-void dump_binary(char *rpath, char *dumpfile, uint32_t offset, struct ProgramVars *pvars)
-{
-    struct encryption_info_command *eic;
-    struct load_command *lc;
-    uint32_t off_cryptid, text_start = 0, cryptoff;
-    int i, fd;
-    bool foundCrypt = FALSE, foundSegment = FALSE; //probably unncessary 
-    
-    //find the cryptid/offset for the particular arch 
-    lc = (struct load_command *) ((unsigned char *) pvars->mh + sizeof(struct mach_header));
-    
-    for (i = 0; i < pvars->mh->ncmds; i++) {
-        printf("Load Command (%d): %08xn", i, lc->cmd);
-        if (lc->cmd == LC_ENCRYPTION_INFO) {
-            eic = (struct encryption_info_command *) lc;
-            
-            /* If this load command is present, but data is not crypted then exit */
-            if (eic->cryptid == 0) {
-                break;
-                _exit(5);
-            }
-            off_cryptid = (off_t) ((void *) &eic->cryptid - (void *) pvars->mh);
-            printf("[+] offset to cryptid found: @%p(from %p) = %x\n", &eic->cryptid, pvars->mh, off_cryptid);
-            printf("[+] Found encrypted data at address %08x of length %u bytes - type %u.\n", eic->cryptoff, eic->cryptsize, eic->cryptid);
-            foundCrypt = TRUE;
-        }
-        else if (lc->cmd == LC_SEGMENT) {
-            /*sc = (struct segment_commmand_do *) lc;
-            uint32_t fourzeroninesix = 4096;
-            if (sc->vmaddr != &fourzeroninesix) { //help!!!11
-                printf("[+] Capitalist developers tried to change the vmaddr!"); //thanks Rastingac
-                text_start = sc->vmaddr;
-                foundSegment = TRUE;
-            }*/
-            foundSegment = TRUE;
-        }
-        if (foundCrypt && foundSegment) {
-            break;
-        }
-        lc = (struct load_command *) ((unsigned char *) lc + lc->cmdsize);
-    }
-    
-    printf("[+] Opening %s for reading.\n", rpath);
-    fd = open(rpath, O_RDONLY);
-    if (fd == -1) {
-        printf("[-] Failed opening.\n");
-        _exit(1);
-    }
-    
-    int outfile = open(dumpfile, O_RDWR | O_CREAT | O_TRUNC, 0644);
-    if (outfile == -1) {
-        return;
-    }
-    lseek(outfile, offset, SEEK_SET);	//go to the offset
-    
-    /* we only add back the mach header and extra stuff later */
-    
-    if (text_start != 0) {
-        cryptoff = eic->cryptoff + text_start;
-    }
-    else {
-        cryptoff = eic->cryptoff;
-    }
-    
-    /* now write the previously encrypted data (header) */
-    printf("[+] Dumping the decrypted data into the file\n");
-    int r = write(outfile, (unsigned char *) pvars->mh + cryptoff, eic->cryptsize);
-    if (r != eic->cryptsize) {
-        printf("[-] Error writing file\n");
-        
-    }
-    //patch the cryptid
-    if (off_cryptid) {
-        uint32_t zero=0;
-        off_cryptid+=offset;
-        printf("[+] Setting the LC_ENCRYPTION_INFO->cryptid to 0 at offset %x\n", off_cryptid);
-        if (lseek(outfile, off_cryptid, SEEK_SET) != off_cryptid || write(outfile, &zero, 4) != 4) {
-            printf("[-] Error writing cryptid value\n");
-            _exit(6);
-        }
-        printf("cryptoff=%u\n", cryptoff);
-        printf("cryptsize=%u\n", eic->cryptsize);
-    }
-}
-
-//void dump_header(char *rpath, char *dumpfile, uint32_t offset, uint32_t cryptoff, uint32_t cryptsize) {
+//void dump_header(char *rpath, char *dump_path, uint32_t offset, uint32_t cryptoff, uint32_t cryptsize) {
 //    int i, fd, r;
 //    
 //    printf("[+] Opening %s for reading.\n", rpath);

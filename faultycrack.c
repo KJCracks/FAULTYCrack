@@ -149,11 +149,14 @@ void dump_header(int fd, int outfd, uint32_t offset, uint32_t cryptoff, uint32_t
     }
 }
 
-void dump_binary(int fd, uint32_t offset, struct ProgramVars *pvars, struct fat_header* mh)
+void dump_binary(int rfd, int fd, uint32_t offset, struct ProgramVars *pvars, struct fat_header* mh)
 {
+    int r, n, restsize, toread;
+    
+    char* buffer[1024];
     struct encryption_info_command *eic;
     struct load_command *lc;
-    uint32_t off_cryptid, text_start = 0, cryptoff;
+    uint32_t off_cryptid, cryptoff;
     int i;
     bool foundCrypt = FALSE, foundSegment = FALSE; //probably unncessary 
     
@@ -192,25 +195,59 @@ void dump_binary(int fd, uint32_t offset, struct ProgramVars *pvars, struct fat_
         lc = (struct load_command *) ((unsigned char *) lc + lc->cmdsize);
         
     }
-    lseek(fd, offset, SEEK_SET);	//go to the offset
+
+    n = offset + eic->cryptoff; /* we assume header is normally at 0x1000 */
     
-    /* we only add back the mach header and extra stuff later */
+     
+    restsize = lseek(rfd, 0, SEEK_END) - n - eic->cryptsize;			
+    lseek(rfd, 0, SEEK_SET);
     
-    if (text_start != 0) {
-        cryptoff = eic->cryptoff + text_start;
+    printf("[+] Copying the not encrypted start of the file\n");
+    /* first copy all the data before the encrypted data */
+    while (n > 0) {
+        toread = (n > sizeof(buffer)) ? sizeof(buffer) : n;
+        r = read(rfd, buffer, toread);
+        if (r != toread) {
+            printf("[-] Error reading file\n");
+            _exit(1);
+        }
+        n -= r;
+        
+        r = write(fd, buffer, toread);
+        if (r != toread) {
+            printf("[-] Error writing file\n");
+            _exit(1);
+        }
     }
-    else {
-        cryptoff = eic->cryptoff;
-    }
     
-    /* now write the previously encrypted data (header) */
+    /* now write the previously encrypted data */
     printf("[+] Dumping the decrypted data into the file\n");
-    int r = write(fd, (unsigned char *)pvars->mh + eic->cryptoff, eic->cryptsize);
-    
+    r = write(fd, (unsigned char *)pvars->mh + eic->cryptoff, eic->cryptsize);
     if (r != eic->cryptsize) {
         printf("[-] Error writing file\n");
-        _exit(11);
-    }   
+        _exit(1);
+    }
+    
+    /* and finish with the remainder of the file */
+    n = restsize;
+    lseek(rfd, eic->cryptsize, SEEK_CUR);
+    printf("[+] Copying the not encrypted remainder of the file\n");
+    while (n > 0) {
+        toread = (n > sizeof(buffer)) ? sizeof(buffer) : n;
+        r = read(rfd, buffer, toread);
+        if (r != toread) {
+            printf("[-] Error reading file\n");
+            _exit(1);
+        }
+        n -= r;
+        
+        r = write(fd, buffer, toread);
+        if (r != toread) {
+            printf("[-] Error writing file\n");
+            _exit(1);
+        }
+    }
+
     //patch the cryptid
     if (off_cryptid) {
         uint32_t zero=0;
@@ -227,7 +264,7 @@ void dump_binary(int fd, uint32_t offset, struct ProgramVars *pvars, struct fat_
 
 
 struct fat_header* getHeader(int fd) {
-    char buffer[4096];
+    char buffer[1024];
     size_t result;
     printf("[+] Reading header\n");
     lseek(fd, 0, SEEK_SET);
@@ -274,9 +311,11 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
 {
     char rpath[4096], dump_path[4096];/* should be big enough for PATH_MAX */
     int fd, outfd;
+    bool dumprest;
     if (argc > 0) {
         printf("dud yolo\n");
         if (strcmp(argv[1], "dump") == 0) {
+            //dump <arch> <dumpfile> <dumprest>
             int arch;
             
             if (realpath(argv[0], rpath) == NULL) {
@@ -287,32 +326,26 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
             if (realpath(argv[3], dump_path) == NULL) {
                 strlcpy(dump_path, argv[3], sizeof(rpath));
             }
+            if (strcmp(argv[4], "1")) {
+                dumprest = TRUE;
+            }
             outfd = open(dump_path, O_RDWR|O_CREAT|O_TRUNC, 0644);
             arch = atoi(argv[2]);
             printf("[+] Preparing to dump binary\n");
             printf("path %s, arch %i\n", dump_path, arch);
             struct fat_header* fh = getHeader(fd);
-            uint32_t offset = getOffset(fh, arch);
-            dump_binary(outfd, offset, pvars, fh);
+            
+            uint32_t offset;
+            if (fh->magic == FAT_CIGAM) {
+                offset = getOffset(fh, arch);
+            }
+            else if (fh->magic == MH_MAGIC) {
+                offset = 0;
+            }
+            dump_binary(fd, outfd, offset, pvars, fh);
             _exit(1);
         }
-        else if (strcmp(argv[1], "dump_header") == 0) {
-            // dump_header <outfile> <restsize>
-            uint32_t restsize;
-            sscanf(argv[3], "%"SCNu32, &restsize);
-            
-            if (realpath(argv[0], rpath) == NULL) {
-                strlcpy(rpath, argv[0], sizeof(rpath));
-            }
-            printf("path %s\n", rpath);
-            fd = open(rpath, O_RDONLY);
-            if (realpath(argv[2], dump_path) == NULL) {
-                strlcpy(dump_path, argv[2], sizeof(rpath));
-            }
-            outfd = open(dump_path, O_RDWR|O_CREAT|O_TRUNC, 0644);
-
-            
-        }
+    
         else if (strcmp(argv[1], "offsets") == 0) {
             if (realpath(argv[0], rpath) == NULL) {
                 strlcpy(rpath, argv[0], sizeof(rpath));
@@ -327,35 +360,46 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
                 _exit(6);
             }
             struct fat_header* fh = getHeader(fd);
-            struct fat_arch* arch = (struct fat_arch *) &fh[1];
-            
-            int archcount = 0, z = 0;
-            printf("swag yolo yoyo %i\n", swap32(fh->nfat_arch));
-            for (z = 0; z < swap32(fh->nfat_arch); z++) {
-                printf("swag yolo %i\n", swap32(arch->cpusubtype));
-                if (swap32(arch->cpusubtype) == ARMV6) {
-                    armv6 = *arch;
-                    archcount++;
-                    printf("### ARMV6 offset %u\n", swap32(armv6.offset));
-                    printf("armv6 subtype %u\n", arch->cpusubtype);
-                    fprintf(stderr, "armv6_offset=%u", swap32(armv6.offset));
-                    has_armv6 = TRUE;
+            int archcount = 0;
+            if (fh->magic == FAT_CIGAM) {
+                struct fat_arch* arch = (struct fat_arch *) &fh[1];
+                int z = 0;
+                printf("swag yolo yoyo %i\n", swap32(fh->nfat_arch));
+                for (z = 0; z < swap32(fh->nfat_arch); z++) {
+                    printf("swag yolo %i\n", swap32(arch->cpusubtype));
+                    if (swap32(arch->cpusubtype) == ARMV6) {
+                        armv6 = *arch;
+                        archcount++;
+                        printf("### ARMV6 offset %u\n", swap32(armv6.offset));
+                        printf("armv6 subtype %u\n", arch->cpusubtype);
+                        fprintf(stderr, "armv6_offset=%u", swap32(armv6.offset));
+                        has_armv6 = TRUE;
+                    }
+                    else if (swap32(arch->cpusubtype) == ARMV7) {
+                        armv7 = *arch;
+                        archcount++;
+                        printf("### ARMV7 offset %u\n", swap32(armv7.offset));
+                        printf("armv7 subtype %u\n", arch->cpusubtype);
+                        fprintf(stderr, "armv7_offset=%u", swap32(armv7.offset));
+                        has_armv7 = TRUE;
+                    }
+                    else if (swap32(arch->cpusubtype) == ARMV7S) {
+                        armv7s = *arch;
+                        //printf("armv7s subtype %u\n", arch->cpusubtype);
+                        fprintf(stderr, "armv7s_offset=%u", swap32(armv7s.offset));
+                        archcount++;
+                    }
+                    arch++;
                 }
-                else if (swap32(arch->cpusubtype) == ARMV7) {
-                    armv7 = *arch;
-                    archcount++;
-                    printf("### ARMV7 offset %u\n", swap32(armv7.offset));
-                    printf("armv7 subtype %u\n", arch->cpusubtype);
-                    fprintf(stderr, "armv7_offset=%u", swap32(armv7.offset));
-                    has_armv7 = TRUE;
-                }
-                else if (swap32(arch->cpusubtype) == ARMV7S) {
-                    armv7s = *arch;
-                    //printf("armv7s subtype %u\n", arch->cpusubtype);
-                    fprintf(stderr, "armv7s_offset=%u", swap32(armv7s.offset));
-                    archcount++;
-                }
-                arch++;
+            }
+            else if (fh->magic == MH_MAGIC) {
+				printf("[+] Executable is a plain MACH-O image\n");
+                archcount = 1;
+                
+            }
+            else {
+                printf("[-] Unknown executable type\n");
+                _exit(5);
             }
             fprintf(stderr, "archcount=%i", archcount);
             _exit(1);

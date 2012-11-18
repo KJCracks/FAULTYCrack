@@ -149,15 +149,29 @@ void dump_header(int fd, int outfd, uint32_t offset, uint32_t cryptoff, uint32_t
     }
 }
 
-void dump_binary(int rfd, int fd, uint32_t offset, struct ProgramVars *pvars, struct fat_header* mh)
+void dump_binary(int rfd, int fd, int archtype, struct ProgramVars *pvars, struct fat_header* mh)
 {
-    int r, n, restsize, toread;
+    char buffer[1024];
+
+    int r;
+    uint32_t n, arch_size, arch_offset, cryptend, cryptstart;
+    int i;
     
-    char* buffer[1024];
+    struct fat_arch* arch = (struct fat_arch *) &mh[1];
+    for (i = 0; i < swap32(mh->nfat_arch); i++) {
+        printf("swag yolo %i\n", swap32(arch->cpusubtype));
+        if (swap32(arch->cpusubtype) == archtype) {
+            printf("[+] Found offset %i", swap32(arch->offset));
+            arch_size = arch->size;
+            arch_offset = arch->offset;
+            break;
+        }
+        arch++;
+    }
+    
     struct encryption_info_command *eic;
     struct load_command *lc;
     uint32_t off_cryptid, cryptoff;
-    int i;
     bool foundCrypt = FALSE, foundSegment = FALSE; //probably unncessary 
     
     //find the cryptid/offset for the particular arch 
@@ -195,15 +209,74 @@ void dump_binary(int rfd, int fd, uint32_t offset, struct ProgramVars *pvars, st
         lc = (struct load_command *) ((unsigned char *) lc + lc->cmdsize);
         
     }
-
-    n = offset + eic->cryptoff; /* we assume header is normally at 0x1000 */
+    lseek(rfd, arch_offset, SEEK_SET);
+    lseek(fd, arch_offset, SEEK_SET);
+    //uint32_t togo = eic->cryptoff + eic->cryptsize;
     
-     
+    cryptend = arch_offset + eic->cryptoff + eic->cryptsize;
+    cryptstart = arch_offset + eic->cryptoff;
+    n = 0;
+    //write the stuff before cryptstart
+    uint32_t toread;
+    
+    while (n < arch_size) {
+        if ((cryptend < lseek(fd, 0L, SEEK_CUR)) && (lseek(fd, 0L, SEEK_CUR) > cryptstart)) {
+            printf("[+] Dumping the decrypted data into the file\n");
+            r = write(fd, (unsigned char *)pvars->mh + eic->cryptoff, eic->cryptsize);
+            if (r != eic->cryptsize) {
+                printf("[-] Error writing file\n");
+                _exit(1);
+            }
+            n -= eic->cryptsize;
+        }
+        else if (lseek(fd, 0L, SEEK_CUR) <= cryptstart) {
+            printf("[+] Dumping stuff before the encrypted part");
+            if (n > sizeof(buffer)) {
+                toread = sizeof(buffer);
+            }
+            else {
+                toread = n;
+            }
+            r = read(rfd, buffer, toread);
+            if (r != toread) {
+                printf("[-] Error reading file\n");
+            }
+            n -= r;
+            
+            r = write(fd, buffer, toread);
+            if (r != toread) {
+                printf("[-] Error writing file\n");
+            }
+        }
+        else if (lseek(fd, 0L, SEEK_CUR) > cryptend) {
+            printf("[+] Dumping stuff after the encrypted part");
+            if (n > sizeof(buffer)) {
+                toread = sizeof(buffer);
+            }
+            else {
+                toread = n;
+            }
+            r = read(rfd, buffer, toread);
+            if (r != toread) {
+                printf("[--] Error reading file\n");
+            }
+            n -= r;
+            
+            r = write(fd, buffer, toread);
+            if (r != toread) {
+                printf("[--] Error writing file\n");
+            }
+
+        }
+            
+    }
+
+  /*  n = offset + eic->cryptoff;     
     restsize = lseek(rfd, 0, SEEK_END) - n - eic->cryptsize;			
     lseek(rfd, 0, SEEK_SET);
     
     printf("[+] Copying the not encrypted start of the file\n");
-    /* first copy all the data before the encrypted data */
+     first copy all the data before the encrypted data 
     while (n > 0) {
         toread = (n > sizeof(buffer)) ? sizeof(buffer) : n;
         r = read(rfd, buffer, toread);
@@ -219,17 +292,16 @@ void dump_binary(int rfd, int fd, uint32_t offset, struct ProgramVars *pvars, st
             _exit(1);
         }
     }
-    
+
+    restsize = restsize - endoff; 
+    */
+   // n = offset + eic->cryptoff;
+   // lseek(fd, n, SEEK_SET);
     /* now write the previously encrypted data */
-    printf("[+] Dumping the decrypted data into the file\n");
-    r = write(fd, (unsigned char *)pvars->mh + eic->cryptoff, eic->cryptsize);
-    if (r != eic->cryptsize) {
-        printf("[-] Error writing file\n");
-        _exit(1);
-    }
+   
     
-    /* and finish with the remainder of the file */
-    n = restsize;
+    /* and finish with the remainder of the file 
+    n = restsize - endoff;
     lseek(rfd, eic->cryptsize, SEEK_CUR);
     printf("[+] Copying the not encrypted remainder of the file\n");
     while (n > 0) {
@@ -247,11 +319,11 @@ void dump_binary(int rfd, int fd, uint32_t offset, struct ProgramVars *pvars, st
             _exit(1);
         }
     }
-
+     */
     //patch the cryptid
     if (off_cryptid) {
         uint32_t zero=0;
-        off_cryptid+=offset;
+        off_cryptid+=arch_offset;
         printf("[+] Setting the LC_ENCRYPTION_INFO->cryptid to 0 at offset %x\n", off_cryptid);
         if (lseek(fd, off_cryptid, SEEK_SET) != off_cryptid || write(fd, &zero, 4) != 4) {
             printf("[-] Error writing cryptid value\n");
@@ -298,7 +370,7 @@ uint32_t getOffset(struct fat_header* fh, int archtype) {
     for (i = 0; i < swap32(fh->nfat_arch); i++) {
         printf("swag yolo %i\n", swap32(arch->cpusubtype));
         if (swap32(arch->cpusubtype) == archtype) {
-            printf("[+] Found offset %u", arch->offset);
+            printf("[+] Found offset %i", swap32(arch->offset));
             return arch->offset;
         }
         arch++;
@@ -311,12 +383,12 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
 {
     char rpath[4096], dump_path[4096];/* should be big enough for PATH_MAX */
     int fd, outfd;
-    bool dumprest;
     if (argc > 0) {
         printf("dud yolo\n");
         if (strcmp(argv[1], "dump") == 0) {
-            //dump <arch> <dumpfile> <dumprest>
+            //dump <arch> <dumpfile> <other offset>
             int arch;
+            uint32_t offset, endoff;
             
             if (realpath(argv[0], rpath) == NULL) {
                 strlcpy(rpath, argv[0], sizeof(rpath));
@@ -326,16 +398,16 @@ void dumptofile(int argc, const char **argv, const char **envp, const char **app
             if (realpath(argv[3], dump_path) == NULL) {
                 strlcpy(dump_path, argv[3], sizeof(rpath));
             }
-            if (strcmp(argv[4], "1")) {
-                dumprest = TRUE;
-            }
-            outfd = open(dump_path, O_RDWR|O_CREAT|O_TRUNC, 0644);
+           
+            sscanf(argv[4], "%"SCNu32, &endoff);
+            
+            outfd = open(dump_path, O_RDWR, 0644);
             arch = atoi(argv[2]);
             printf("[+] Preparing to dump binary\n");
             printf("path %s, arch %i\n", dump_path, arch);
             struct fat_header* fh = getHeader(fd);
             
-            uint32_t offset;
+           
             if (fh->magic == FAT_CIGAM) {
                 offset = getOffset(fh, arch);
             }
